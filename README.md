@@ -17,4 +17,4 @@ For the user’s privacy, the website doesn’t store any of the audio it record
 The website enables deaf users to be alerted and informed of important noises around them, allowing them to respond appropriately and take necessary action. Further, it allows deaf people to gain independence, as in the past, they would need someone with them for situations where they would need to react to significant noises.
 
 By converting critical sounds into accessible notifications, our website is revolutionary for bridging the gap for individuals with hearing disabilities, making everyday environments safer and more inclusive for them. Our website can be found at 
-https://ehstsa.github.io/notify
+https://ehstsa.github.io/Notify_Final
