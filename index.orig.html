@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Audio Detector</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- ── Auth screen ── -->
+  <div id="authScreen">
+    <div class="auth-card">
+      <div class="auth-logo">🎧</div>
+      <h2 class="auth-title">Audio Detector</h2>
+      <p class="auth-sub">Sign in to continue</p>
+
+      <div class="auth-tabs">
+        <button class="auth-tab active" id="tabSignIn">Sign In</button>
+        <button class="auth-tab" id="tabSignUp">Create Account</button>
+      </div>
+
+      <div class="auth-fields">
+        <input class="auth-input" type="email" id="emailInput" placeholder="Email address" autocomplete="email" />
+        <input class="auth-input" type="password" id="passInput" placeholder="Password" autocomplete="current-password" />
+        <input class="auth-input" type="password" id="passConfirmInput" placeholder="Confirm password" autocomplete="new-password" style="display:none" />
+      </div>
+
+      <div id="authError" class="auth-error"></div>
+
+      <button class="btn btn-primary auth-btn" id="signInBtn">Sign In</button>
+      <button class="btn btn-primary auth-btn" id="signUpBtn" style="display:none">Create Account</button>
+    </div>
+  </div>
+
+  <!-- ── Main app ── -->
+  <div id="mainApp" style="display:none">
+    <div class="shell">
+
+      <div class="header">
+        <h1>Audio Detector</h1>
+        <label class="toggle-wrap">
+          Dark
+          <label class="toggle">
+            <input type="checkbox" id="darkSetting">
+            <span class="toggle-slider"></span>
+          </label>
+        </label>
+      </div>
+
+      <div class="user-bar">
+        <span class="user-bar-email" id="userEmail"></span>
+        <button class="btn-sign-out" id="signOutBtn">Sign out</button>
+      </div>
+
+      <div class="status-card">
+        <div class="status-orb" id="statusOrb">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-muted)">
+            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+            <line x1="12" y1="19" x2="12" y2="23"/>
+            <line x1="8" y1="23" x2="16" y2="23"/>
+          </svg>
+        </div>
+        <div class="status-info">
+          <div class="status-label">Status</div>
+          <div class="status-value" id="status">Idle</div>
+        </div>
+      </div>
+
+      <div id="alertBox"></div>
+
+      <div class="controls">
+        <button class="btn btn-primary full" id="startBtn">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+            <line x1="12" y1="19" x2="12" y2="23"/>
+            <line x1="8" y1="23" x2="16" y2="23"/>
+          </svg>
+          Start Listening
+        </button>
+
+        <button class="btn btn-secondary" id="stopBtn" disabled>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
+            <rect x="4" y="4" width="16" height="16" rx="2"/>
+          </svg>
+          Stop
+        </button>
+
+        <button class="btn btn-secondary" id="settingsBtn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          </svg>
+          Settings
+        </button>
+      </div>
+
+      <div id="settingsPanel">
+        <div class="settings-title">General</div>
+
+        <div class="setting-row">
+          <div>
+            <div class="setting-label">Notifications</div>
+            <div class="setting-desc">Alert when tab is in background</div>
+          </div>
+          <label class="toggle">
+            <input type="checkbox" id="notifSetting">
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+
+        <div class="setting-row">
+          <div>
+            <div class="setting-label">Email alerts</div>
+            <div class="setting-desc">Send an email when a sound is detected</div>
+          </div>
+          <label class="toggle">
+            <input type="checkbox" id="emailSetting">
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+
+        <div class="setting-row">
+          <div style="width:100%">
+            <div class="setting-label">Alert email address</div>
+            <div class="setting-desc">Where email alerts should be sent</div>
+            <input
+              type="email"
+              id="emailAddress"
+              placeholder="Enter email address"
+              autocomplete="email"
+              style="width:100%; padding:10px; margin-top:8px; border-radius:10px; border:1px solid #ccc; font:inherit; background:var(--card, #fff); color:inherit;"
+            />
+          </div>
+        </div>
+
+        <div class="setting-row">
+          <div>
+            <div class="setting-label">Confidence threshold</div>
+            <div class="setting-desc">Minimum score to trigger an alert</div>
+          </div>
+          <div class="slider-wrap">
+            <input type="range" id="thresholdSlider" min="0.05" max="0.95" step="0.01" value="0.20">
+            <span class="slider-val" id="thresholdVal">0.20</span>
+          </div>
+        </div>
+
+        <div class="settings-title mt">Monitored Sounds</div>
+        <div id="soundToggles"></div>
+      </div>
+
+      <div class="log-card">
+        <div class="log-header">
+          <span class="log-title">Event Log</span>
+          <button class="log-clear" id="clearLog">Clear</button>
+        </div>
+        <div id="eventLog"></div>
+      </div>
+
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.14.0/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+  <script>
+    emailjs.init("RHqaBdMrcFqQqpQsq");
+  </script>
+  <script type="module" src="app.js"></script>
+
+  <div id="flashOverlay"></div>
+  
+</body>
+</html>

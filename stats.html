@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Audio Detector - Stats</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+  <div class="shell">
+
+    <!-- Header -->
+    <div class="header">
+      <h1>Audio Detector</h1>
+      <div class="header-actions">
+        <nav class="top-nav">
+          <a class="top-nav-link" href="index.html">Detector</a>
+          <a class="top-nav-link active" href="stats.html">Stats</a>
+        </nav>
+      </div>
+    </div>
+
+    <!-- User bar -->
+    <div class="user-bar">
+      <span id="userEmail"></span>
+      <button id="signOutBtn">Sign out</button>
+    </div>
+
+    <!-- Filter buttons -->
+    <div style="margin:16px 0;">
+      <button class="filter-btn" data-days="1">1d</button>
+      <button class="filter-btn active" data-days="7">7d</button>
+      <button class="filter-btn" data-days="30">30d</button>
+    </div>
+
+    <!-- Loading -->
+    <div id="loadingState">
+      Loading detections…
+    </div>
+
+    <!-- Empty -->
+    <div id="emptyState" hidden>
+      No detections in this period
+    </div>
+
+    <!-- Main content -->
+    <div id="statsContent" hidden>
+
+      <!-- Bar chart -->
+      <div style="height:300px;">
+        <canvas id="barChart"></canvas>
+      </div>
+
+      <!-- Scatter chart -->
+      <div style="height:300px; margin-top:20px;">
+        <canvas id="scatterChart"></canvas>
+      </div>
+
+      <!-- Summary table -->
+      <table style="margin-top:20px; width:100%;">
+        <thead>
+          <tr>
+            <th>Sound Label</th>
+            <th>Count</th>
+            <th>Last Detected</th>
+            <th>Avg Confidence</th>
+          </tr>
+        </thead>
+        <tbody id="summaryTableBody"></tbody>
+      </table>
+
+    </div>
+
+  </div>
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <!-- Stats logic -->
+  <script type="module" src="stats.js"></script>
+
+</body>
+</html>
