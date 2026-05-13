@@ -356,7 +356,7 @@ async function loadModel() {
   statusEl.textContent = "Loading YAMNet…";
   addLog("Fetching YAMNet from TF Hub…");
   model = await window.tf.loadGraphModel(MODEL_URL, { fromTFHub: true });
-  addLog("YAMNet ready — 11 sound classes active.");
+  addLog("YAMNet ready — 11 Notify classes active.");
   statusEl.textContent = "Ready";
 }
 
