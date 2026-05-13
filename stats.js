@@ -1,413 +1,343 @@
-import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-auth.js";
+/**
+ * stats.js — Audio Detector stats dashboard
+ *
+ * KEY FIXES vs previous version:
+ *  1. No compound Firestore index needed — queries only on userId,
+ *     then filters by date client-side. Avoids the "missing index" error
+ *     that was silently killing the page.
+ *  2. Errors are shown on-screen, not swallowed.
+ *  3. showState() uses both .hidden AND display style so it works
+ *     regardless of what styles.css does to those elements.
+ *  4. detectedAt is null-safe (serverTimestamp() is null on the client
+ *     briefly after addDoc — we skip those docs instead of crashing).
+ */
+
 import {
-  Timestamp,
+  onAuthStateChanged,
+  signOut
+} from "https://www.gstatic.com/firebasejs/12.10.0/firebase-auth.js";
+import {
   collection,
-  getDocs,
-  orderBy,
   query,
   where,
+  getDocs
 } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-firestore.js";
 import { auth, db } from "./firebase.js";
 
-const userEmailEl = document.getElementById("userEmail");
-const signOutBtn = document.getElementById("signOutBtn");
-const darkSetting = document.getElementById("darkSetting");
-const filterButtons = [...document.querySelectorAll(".filter-btn")];
-const loadingState = document.getElementById("loadingState");
-const emptyState = document.getElementById("emptyState");
-const statsContent = document.getElementById("statsContent");
-const summaryTableBody = document.getElementById("summaryTableBody");
-const barCanvas = document.getElementById("barChart");
-const scatterCanvas = document.getElementById("scatterChart");
+// ── Colours ───────────────────────────────────────────────────────────────────
+const COLORS = ["#4f9cf9","#f97b4f","#4ff9b6","#f9d44f","#c97bf9","#f94f7b","#7bf94f","#4fc5f9"];
 
-let selectedDays = 7;
-let barChart = null;
-let scatterChart = null;
-let latestRows = [];
+// ── State ─────────────────────────────────────────────────────────────────────
+let allDetections = [];
+let activeDays    = 7;
+let charts        = {};
 
-const theme = localStorage.getItem("audio-detector-theme") || "light";
-document.body.classList.toggle("dark", theme === "dark");
+// ── DOM ───────────────────────────────────────────────────────────────────────
+const loadingEl = document.getElementById("loadingState");
+const emptyEl   = document.getElementById("emptyState");
+const contentEl = document.getElementById("statsContent");
+const emailEl   = document.getElementById("userEmail");
 
-if (darkSetting) {
-  darkSetting.checked = theme === "dark";
+// ── Auth ──────────────────────────────────────────────────────────────────────
+onAuthStateChanged(auth, user => {
+  if (!user) { window.location.href = "index.html"; return; }
+  emailEl.textContent = user.email;
+  document.getElementById("signOutBtn").onclick = () => signOut(auth);
+  loadData(user.uid, activeDays);
+});
 
-  darkSetting.addEventListener("change", () => {
-    const isDark = darkSetting.checked;
-    document.body.classList.toggle("dark", isDark);
-    localStorage.setItem("audio-detector-theme", isDark ? "dark" : "light");
-
-    if (!statsContent.hidden && latestRows.length > 0) {
-      renderCharts(latestRows);
-    }
-  });
-}
-
-if (signOutBtn) {
-  signOutBtn.addEventListener("click", async () => {
-    await signOut(auth);
-    window.location.href = "index.html";
-  });
-}
-
-filterButtons.forEach((button) => {
-  button.addEventListener("click", () => {
-    const days = Number(button.dataset.days);
-    if (days === selectedDays) return;
-
-    selectedDays = days;
-    filterButtons.forEach((btn) => btn.classList.toggle("active", btn === button));
-
-    if (auth.currentUser) {
-      loadStats(auth.currentUser.uid);
-    }
+// ── Period buttons ────────────────────────────────────────────────────────────
+document.querySelectorAll(".filter-btn[data-days]").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".filter-btn[data-days]").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    activeDays = parseInt(btn.dataset.days, 10);
+    if (auth.currentUser) loadData(auth.currentUser.uid, activeDays);
   });
 });
 
-onAuthStateChanged(auth, (user) => {
-  if (!user) {
-    window.location.href = "index.html";
-    return;
-  }
-
-  if (userEmailEl) {
-    userEmailEl.textContent = user.email || "Signed in";
-  }
-
-  loadStats(user.uid);
+// ── CSV export ────────────────────────────────────────────────────────────────
+document.getElementById("exportCsvBtn").addEventListener("click", () => {
+  if (!allDetections.length) return;
+  const csv = [
+    ["timestamp","label","confidence"].join(","),
+    ...allDetections.map(d =>
+      [new Date(d.ts).toISOString(), `"${d.label}"`, d.confidence.toFixed(4)].join(",")
+    )
+  ].join("\n");
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+  a.download = `detections_${activeDays}d.csv`;
+  a.click();
 });
 
-async function loadStats(userId) {
-  setState("loading");
+// ── Data loading ──────────────────────────────────────────────────────────────
+async function loadData(uid, days) {
+  showState("loading");
+  destroyCharts();
 
-  const cutoffDate = new Date(Date.now() - selectedDays * 24 * 60 * 60 * 1000);
+  const cutoff = Date.now() - days * 86400_000;
 
   try {
-    const eventsQuery = query(
-      collection(db, "sound_events"),
-      where("userId", "==", userId),
-      where("detectedAt", ">=", Timestamp.fromDate(cutoffDate)),
-      orderBy("detectedAt", "desc")
+    // Single-field query — no composite index required
+    const snap = await getDocs(
+      query(collection(db, "sound_events"), where("userId", "==", uid))
     );
 
-    const snapshot = await getDocs(eventsQuery);
-
-    const rows = snapshot.docs
-      .map((doc) => {
-        const data = doc.data();
-        const detectedAt = data.detectedAt?.toDate?.();
-
-        if (!detectedAt || Number.isNaN(detectedAt.getTime())) {
-          return null;
-        }
-
+    allDetections = snap.docs
+      .map(doc => {
+        const d = doc.data();
+        // detectedAt can be null right after addDoc (serverTimestamp pending)
+        const ts = d.detectedAt?.toDate?.().getTime() ?? null;
+        if (!ts) return null;
         return {
-          id: doc.id,
-          soundLabel: String(data.soundLabel || "Unknown"),
-          confidence: clamp(Number(data.confidence ?? 0), 0, 1),
-          detectedAt,
+          label:      d.soundLabel  ?? "Unknown",
+          confidence: typeof d.confidence === "number" ? d.confidence : 0,
+          ts,
         };
       })
-      .filter(Boolean);
+      .filter(d => d !== null && d.ts >= cutoff)
+      .sort((a, b) => a.ts - b.ts);
 
-    latestRows = rows;
-    window.__statsRows = rows;
-
-    if (rows.length === 0) {
-      destroyCharts();
-      summaryTableBody.innerHTML = "";
-      setState("empty");
+    if (!allDetections.length) {
+      showState("empty");
       return;
     }
 
-    renderCharts(rows);
-    renderSummaryTable(rows);
-    setState("content");
-  } catch (error) {
-    console.error("Failed to load stats:", error);
-    latestRows = [];
-    destroyCharts();
-    summaryTableBody.innerHTML = `
-      <tr>
-        <td colspan="4">Failed to load stats: ${escapeHtml(error.message || "Unknown error")}</td>
-      </tr>
-    `;
-    setState("content");
+    showState("content");
+    renderDashboard(allDetections, days);
+
+  } catch (err) {
+    console.error("Firestore error:", err);
+    showError(err.message || String(err));
   }
 }
 
-function setState(state) {
-  loadingState.hidden = state !== "loading";
-  emptyState.hidden = state !== "empty";
-  statsContent.hidden = state !== "content";
+// ── Render ────────────────────────────────────────────────────────────────────
+function renderDashboard(data, days) {
+  const labels   = [...new Set(data.map(d => d.label))];
+  const colorMap = Object.fromEntries(labels.map((l, i) => [l, COLORS[i % COLORS.length]]));
+  renderKPIs(data, days);
+  renderTimeline(data, labels, colorMap);
+  renderDonut(data, labels, colorMap);
+  renderScatter(data, labels, colorMap);
+  renderHeatmap(data);
+  renderTable(data, labels, colorMap);
 }
 
-function renderCharts(rows) {
-  if (typeof Chart === "undefined") {
-    console.error("Chart.js is not loaded.");
-    summaryTableBody.innerHTML = `
-      <tr>
-        <td colspan="4">Chart.js failed to load, so the charts cannot be displayed.</td>
-      </tr>
-    `;
-    return;
-  }
+function renderKPIs(data, days) {
+  const total   = data.length;
+  const avgConf = (data.reduce((s, d) => s + d.confidence, 0) / total * 100).toFixed(1);
+  const hc      = Array(24).fill(0);
+  data.forEach(d => hc[new Date(d.ts).getHours()]++);
+  const peakH = hc.indexOf(Math.max(...hc));
+  const lc = {};
+  data.forEach(d => lc[d.label] = (lc[d.label] ?? 0) + 1);
+  const topLabel = Object.entries(lc).sort((a,b) => b[1]-a[1])[0]?.[0] ?? "—";
 
-  const summary = buildSummary(rows);
-  renderBarChart(summary);
-  renderScatterChart(rows, summary.labels);
+  document.getElementById("kpiStrip").innerHTML = [
+    { v: total,             l: `Detections (${days}d)`, c: "#4f9cf9" },
+    { v: avgConf + "%",     l: "Avg confidence",        c: "#4ff9b6" },
+    { v: fmtHour(peakH),    l: "Peak hour",             c: "#f9d44f" },
+    { v: topLabel,          l: "Top sound",             c: "#f97b4f" },
+  ].map(k => `
+    <div class="kpi" style="--accent-color:${k.c}">
+      <div class="kpi-value">${k.v}</div>
+      <div class="kpi-label">${k.l}</div>
+    </div>
+  `).join("");
 }
 
-function buildSummary(rows) {
-  const map = new Map();
+function renderTimeline(data, labels, colorMap) {
+  const buckets = {};
+  data.forEach(d => {
+    const day = dayKey(d.ts);
+    buckets[day] ??= {};
+    buckets[day][d.label] = (buckets[day][d.label] ?? 0) + 1;
+  });
+  const days = Object.keys(buckets).sort(compareDayKeys);
 
-  for (const row of rows) {
-    const existing = map.get(row.soundLabel) || {
-      soundLabel: row.soundLabel,
-      count: 0,
-      lastDetected: row.detectedAt,
-      confidenceSum: 0,
-    };
-
-    existing.count += 1;
-    existing.confidenceSum += row.confidence;
-
-    if (row.detectedAt > existing.lastDetected) {
-      existing.lastDetected = row.detectedAt;
-    }
-
-    map.set(row.soundLabel, existing);
-  }
-
-  const items = [...map.values()].sort(
-    (a, b) => b.count - a.count || a.soundLabel.localeCompare(b.soundLabel)
-  );
-
-  return {
-    items,
-    labels: items.map((item) => item.soundLabel),
-  };
-}
-
-function renderBarChart(summary) {
-  if (!barCanvas) return;
-
-  if (barChart) {
-    barChart.destroy();
-    barChart = null;
-  }
-
-  barChart = new Chart(barCanvas, {
+  charts.timeline = new Chart(document.getElementById("timelineChart"), {
     type: "bar",
     data: {
-      labels: summary.items.map((item) => item.soundLabel),
-      datasets: [
-        {
-          label: "Detections",
-          data: summary.items.map((item) => item.count),
-          borderWidth: 1,
-          borderRadius: 8,
-        },
-      ],
+      labels: days,
+      datasets: labels.map(lbl => ({
+        label: lbl,
+        data:  days.map(k => buckets[k]?.[lbl] ?? 0),
+        backgroundColor: hex2rgba(colorMap[lbl], 0.75),
+        borderColor: colorMap[lbl],
+        borderWidth: 1,
+        borderRadius: 3,
+      }))
     },
-    options: chartOptions({
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          callbacks: {
-            label(context) {
-              return `Detections: ${context.raw}`;
-            },
-          },
-        },
-      },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: legendOpts() },
       scales: {
-        x: {
-          ticks: {
-            maxRotation: 0,
-            minRotation: 0,
-            autoSkip: false,
-          },
-          title: {
-            display: true,
-            text: "Notify label",
-          },
-        },
-        y: {
-          beginAtZero: true,
-          ticks: {
-            precision: 0,
-          },
-          title: {
-            display: true,
-            text: "Detection count",
-          },
-        },
-      },
-    }),
+        x: { stacked: true, ...axisOpts() },
+        y: { stacked: true, ...axisOpts(), ticks: { ...tickOpts(), stepSize: 1 } },
+      }
+    }
   });
 }
 
-function renderScatterChart(rows, labels) {
-  if (!scatterCanvas) return;
-
-  if (scatterChart) {
-    scatterChart.destroy();
-    scatterChart = null;
-  }
-
-  const labelIndex = new Map(labels.map((label, index) => [label, index]));
-
-  const points = rows
-    .map((row) => {
-      const yIndex = labelIndex.get(row.soundLabel);
-      if (yIndex == null) return null;
-
-      return {
-        x: row.detectedAt.getHours() + row.detectedAt.getMinutes() / 60,
-        y: yIndex,
-        r: 4 + row.confidence * 12,
-        soundLabel: row.soundLabel,
-        confidence: row.confidence,
-        detectedAt: row.detectedAt,
-      };
-    })
-    .filter(Boolean);
-
-  scatterChart = new Chart(scatterCanvas, {
-    type: "bubble",
+function renderDonut(data, labels, colorMap) {
+  const counts = {};
+  data.forEach(d => counts[d.label] = (counts[d.label] ?? 0) + 1);
+  charts.donut = new Chart(document.getElementById("donutChart"), {
+    type: "doughnut",
     data: {
-      datasets: [
-        {
-          label: "Detections",
-          data: points,
-        },
-      ],
+      labels,
+      datasets: [{
+        data: labels.map(l => counts[l] ?? 0),
+        backgroundColor: labels.map(l => colorMap[l]),
+        borderWidth: 0,
+        hoverOffset: 8,
+      }]
     },
-    options: chartOptions({
-      parsing: false,
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          callbacks: {
-            label(context) {
-              const point = context.raw;
-              return `${point.soundLabel} • ${point.detectedAt.toLocaleString()} • confidence ${point.confidence.toFixed(3)}`;
-            },
-          },
-        },
-      },
-      scales: {
-        x: {
-          min: 0,
-          max: 24,
-          ticks: {
-            stepSize: 1,
-            callback: (value) => `${Math.floor(value)}:00`,
-          },
-          title: {
-            display: true,
-            text: "Hour of day",
-          },
-        },
-        y: {
-          min: -0.5,
-          max: Math.max(labels.length - 0.5, 0.5),
-          ticks: {
-            stepSize: 1,
-            callback: (value) => {
-              const index = Math.round(value);
-              return labels[index] || "";
-            },
-          },
-          title: {
-            display: true,
-            text: "Notify label",
-          },
-        },
-      },
-    }),
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      cutout: "65%",
+      plugins: { legend: { ...legendOpts(), position: "right" } }
+    }
   });
 }
 
-function renderSummaryTable(rows) {
-  const summary = buildSummary(rows);
-
-  summaryTableBody.innerHTML = summary.items
-    .map((item) => {
-      const avgConfidence = item.confidenceSum / item.count;
-
-      return `
-        <tr>
-          <td>${escapeHtml(item.soundLabel)}</td>
-          <td>${item.count}</td>
-          <td>${escapeHtml(item.lastDetected.toLocaleString())}</td>
-          <td>${avgConfidence.toFixed(3)}</td>
-        </tr>
-      `;
-    })
-    .join("");
+function renderScatter(data, labels, colorMap) {
+  charts.scatter = new Chart(document.getElementById("scatterChart"), {
+    type: "scatter",
+    data: {
+      datasets: labels.map(lbl => ({
+        label: lbl,
+        data: data.filter(d => d.label === lbl)
+                  .map(d => ({ x: d.ts, y: +(d.confidence * 100).toFixed(1) })),
+        backgroundColor: hex2rgba(colorMap[lbl], 0.65),
+        pointRadius: 4, pointHoverRadius: 6,
+      }))
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: legendOpts() },
+      scales: {
+        x: { type: "time", time: { tooltipFormat: "MMM d, h:mm a" }, ...axisOpts() },
+        y: {
+          min: 0, max: 100,
+          title: { display: true, text: "Confidence %", color: "#6b7280", font: { size: 10 } },
+          ticks: { ...tickOpts(), callback: v => v + "%" },
+          grid: { color: "#252933" }
+        }
+      }
+    }
+  });
 }
 
-function chartOptions(extra = {}) {
-  const isDark = document.body.classList.contains("dark");
-  const tickColor = isDark ? "#cbd5e1" : "#475569";
-  const gridColor = isDark ? "rgba(148, 163, 184, 0.15)" : "rgba(15, 23, 42, 0.08)";
+function renderHeatmap(data) {
+  const DAYS  = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+  const count = Array.from({length:7}, () => Array(24).fill(0));
+  data.forEach(d => { const dt = new Date(d.ts); count[dt.getDay()][dt.getHours()]++; });
+  const max = Math.max(1, ...count.flat());
+  const el  = document.getElementById("heatmapContainer");
 
-  const mergedScales = {};
-  const inputScales = extra.scales || {};
+  const hrLabels = Array.from({length:24}, (_,h) =>
+    `<div class="heatmap-hour-label">${h===0?"12a":h<12?h+"a":h===12?"12p":(h-12)+"p"}</div>`
+  ).join("");
 
-  for (const [key, config] of Object.entries(inputScales)) {
-    mergedScales[key] = {
-      grid: { color: gridColor },
-      ticks: { color: tickColor, ...(config.ticks || {}) },
-      title: { color: tickColor, ...(config.title || {}) },
-      ...config,
-    };
-  }
+  const rows = DAYS.map((day, dow) => {
+    const cells = Array.from({length:24}, (_,h) => {
+      const v = count[dow][h];
+      const bg = v > 0 ? `rgba(79,156,249,${(0.12 + v/max*0.88).toFixed(2)})` : "var(--stats-border)";
+      return `<div class="heatmap-cell" style="background:${bg}" title="${day} ${fmtHour(h)}: ${v}"></div>`;
+    }).join("");
+    return `<div class="heatmap-day-label">${day}</div>${cells}`;
+  }).join("");
 
-  return {
-    responsive: true,
-    maintainAspectRatio: false,
-    animation: false,
-    scales: mergedScales,
-    plugins: {
-      legend: {
-        labels: { color: tickColor },
-      },
-      ...(extra.plugins || {}),
-    },
-    elements: {
-      point: {
-        hoverRadius: 10,
-      },
-      ...(extra.elements || {}),
-    },
-    ...extra,
-    scales: mergedScales,
-  };
+  el.innerHTML = `
+    <div class="heatmap-hour-labels"><div></div>${hrLabels}</div>
+    <div class="heatmap-grid">${rows}</div>
+  `;
+}
+
+function renderTable(data, labels, colorMap) {
+  document.getElementById("summaryTableBody").innerHTML = labels.map(lbl => {
+    const rows    = data.filter(d => d.label === lbl);
+    const count   = rows.length;
+    const avg     = rows.reduce((s,d) => s+d.confidence, 0) / count;
+    const lastTs  = Math.max(...rows.map(d => d.ts));
+    const hc      = Array(24).fill(0);
+    rows.forEach(d => hc[new Date(d.ts).getHours()]++);
+    const peak = hc.indexOf(Math.max(...hc));
+    return `<tr>
+      <td><div class="sound-pill">
+        <span class="sound-dot" style="background:${colorMap[lbl]}"></span>${lbl}
+      </div></td>
+      <td>${count}</td>
+      <td><div class="conf-bar-wrap">
+        <div class="conf-bar"><div class="conf-bar-fill" style="width:${(avg*100).toFixed(0)}%;background:${colorMap[lbl]}"></div></div>
+        <span>${(avg*100).toFixed(1)}%</span>
+      </div></td>
+      <td>${fmtHour(peak)}</td>
+      <td>${fmtRelTime(lastTs)}</td>
+    </tr>`;
+  }).join("");
+}
+
+// ── UI state ──────────────────────────────────────────────────────────────────
+function showState(state) {
+  // Use both hidden attribute AND display style to defeat any CSS interference
+  const states = { loading: loadingEl, empty: emptyEl, content: contentEl };
+  Object.entries(states).forEach(([s, el]) => {
+    const active = s === state;
+    el.hidden = !active;
+    el.style.display = active ? (s === "content" ? "block" : "") : "none";
+  });
+}
+
+function showError(msg) {
+  loadingEl.hidden = true;
+  loadingEl.style.display = "none";
+  emptyEl.hidden = false;
+  emptyEl.style.display = "";
+  emptyEl.textContent = `Error loading data: ${msg}`;
 }
 
 function destroyCharts() {
-  if (barChart) {
-    barChart.destroy();
-    barChart = null;
-  }
-
-  if (scatterChart) {
-    scatterChart.destroy();
-    scatterChart = null;
-  }
+  Object.values(charts).forEach(c => { try { c.destroy(); } catch {} });
+  charts = {};
 }
 
-function clamp(value, min, max) {
-  return Math.min(max, Math.max(min, value));
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function dayKey(ts) {
+  const d = new Date(ts);
+  return `${d.getMonth()+1}/${d.getDate()}`;
 }
-
-function escapeHtml(value) {
-  return String(value)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
+function compareDayKeys(a, b) {
+  const [am,ad] = a.split("/").map(Number);
+  const [bm,bd] = b.split("/").map(Number);
+  return am !== bm ? am - bm : ad - bd;
+}
+function hex2rgba(hex, a) {
+  const [r,g,b] = [1,3,5].map(i => parseInt(hex.slice(i,i+2),16));
+  return `rgba(${r},${g},${b},${a})`;
+}
+function fmtHour(h) {
+  if (h===0)  return "12 AM";
+  if (h<12)   return `${h} AM`;
+  if (h===12) return "12 PM";
+  return `${h-12} PM`;
+}
+function fmtRelTime(ts) {
+  const m = Math.floor((Date.now()-ts)/60000);
+  if (m<1)   return "Just now";
+  if (m<60)  return `${m}m ago`;
+  if (m<1440) return `${Math.floor(m/60)}h ago`;
+  return `${Math.floor(m/1440)}d ago`;
+}
+function legendOpts() {
+  return { labels: { color:"#6b7280", font:{family:"DM Mono",size:11}, boxWidth:10 } };
+}
+function tickOpts() {
+  return { color:"#6b7280", font:{family:"DM Mono",size:10} };
+}
+function axisOpts() {
+  return { ticks: tickOpts(), grid: { color:"#252933" } };
 }
