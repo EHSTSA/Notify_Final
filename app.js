@@ -11,6 +11,29 @@ import {
   serverTimestamp
 } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-firestore.js";
 import { auth, db } from "./firebase.js";
+import { YAMNET_CLASS_NAMES } from "./yamnet_class_map.js";
+import {
+  SOUND_GROUPS,
+  AGGREGATION,
+  COOLDOWN_MS,
+  WINDOW_S,
+  POLL_MS,
+  THRESHOLD_DEFAULT,
+  THRESHOLD_MULTIPLIER_RANGE,
+  DEBUG,
+  DEBUG_RING_SIZE,
+  MIN_RMS,
+  TOP_K_GATE,
+} from "./config.js";
+import {
+  resolveGroups,
+  formatResolutionTable,
+  ScoreBuffer,
+  pickBestFiring,
+  effectiveThreshold,
+  CooldownGate,
+  groupScoreOnFrame,
+} from "./detection.js";
 
 // ── EmailJS config ───────────────────────────────────────────────────────────
 // Uses Resend under the hood via EmailJS — fires off an email when a sound
@@ -151,31 +174,13 @@ onAuthStateChanged(auth, user => {
 });
 
 // ── Sound definitions ────────────────────────────────────────────────────────
-// Each entry maps one or more YAMNet class indices to a single user-facing label.
-// We merge classes that mean the same thing in practice (e.g. smoke detector,
-// siren, and buzzer all just mean "fire alarm is going off") so the user gets
-// one clear alert instead of three confusing ones.
-//
-// idx values are YAMNet's 521-class output indices — see the class map at
-// https://github.com/tensorflow/models/blob/master/research/audioset/yamnet/yamnet_class_map.csv
-const SOUNDS = [
-  // --- danger: things you need to act on immediately ---
-  { id: "firealarm", idx: [396, 397, 388, 389, 390, 398], label: "Fire Alarm", emoji: "🚨", tier: "danger", notif: "Fire alarm detected — check your surroundings!" },
-  { id: "glass",     idx: [60, 61],                       label: "Glass Shatter", emoji: "💥", tier: "danger", notif: "Glass breaking detected!" },
+// Groups, thresholds, and aggregation strategy live in config.js.
+// Indices are resolved from YAMNet's class map at startup so a label typo
+// fails loudly instead of silently mapping to the wrong class.
+const SOUNDS = resolveGroups(SOUND_GROUPS, YAMNET_CLASS_NAMES);
 
-  // --- warn: not life-threatening but you should know ---
-  { id: "baby",      idx: [14, 15],              label: "Baby Crying", emoji: "👶", tier: "warn", notif: "Baby crying detected." },
-  { id: "horn",      idx: [325, 326, 302, 303],  label: "Horn",        emoji: "📯", tier: "warn", notif: "Horn detected nearby." },
-  { id: "reversing", idx: [329],                  label: "Reversing Beeps", emoji: "🔁", tier: "warn", notif: "Reversing vehicle detected." },
-
-  // --- info: everyday sounds worth surfacing ---
-  { id: "doorbell",  idx: [379, 380],  label: "Doorbell",          emoji: "🔔", tier: "info", notif: "Someone rang the doorbell." },
-  { id: "phone",     idx: [400, 401],        label: "Telephone Ringing", emoji: "📞", tier: "info", notif: "Telephone ringing." },
-  { id: "alarm",     idx: [393, 394],        label: "Alarm Clock",       emoji: "⏰", tier: "info", notif: "Alarm clock going off." },
-  { id: "microwave", idx: [375],             label: "Microwave",         emoji: "📡", tier: "info", notif: "Microwave beep detected." },
-  { id: "dog",       idx: [74, 75, 76],      label: "Dog Barking",       emoji: "🐕", tier: "info", notif: "Dog barking detected." },
-  { id: "vacuum",    idx: [373],             label: "Vacuum Cleaner",    emoji: "🌀", tier: "info", notif: "Vacuum cleaner detected." },
-];
+// Dump the resolved mapping so it can be visually sanity-checked.
+console.log(formatResolutionTable(SOUNDS));
 
 const enabled = Object.fromEntries(SOUNDS.map(s => [s.id, true]));
 
@@ -251,9 +256,12 @@ darkSetting.onchange = () => {
   localStorage.setItem("audio-detector-theme", darkSetting.checked ? "dark" : "light");
 };
 
+let THRESHOLD_MULTIPLIER = THRESHOLD_MULTIPLIER_RANGE.default;
+thresholdSlider.value = String(THRESHOLD_MULTIPLIER);
+thresholdVal.textContent = THRESHOLD_MULTIPLIER.toFixed(2) + "×";
 thresholdSlider.oninput = () => {
-  THRESHOLD = parseFloat(thresholdSlider.value);
-  thresholdVal.textContent = THRESHOLD.toFixed(2);
+  THRESHOLD_MULTIPLIER = parseFloat(thresholdSlider.value);
+  thresholdVal.textContent = THRESHOLD_MULTIPLIER.toFixed(2) + "×";
 };
 
 let alertTO;
@@ -329,16 +337,14 @@ async function saveSoundEvent(sound, score) {
 }
 
 // ── YAMNet inference pipeline ─────────────────────────────────────────────────
-// YAMNet expects mono 16 kHz audio. Most mics run at 44.1/48 kHz so we
-// resample on the fly. We grab 1.5s windows every 750ms (overlapping) to
-// balance latency vs. accuracy, and debounce detections with a 3s cooldown
-// so we don't spam the user with the same alert.
+// YAMNet expects mono 16 kHz float32 audio in [-1, 1]. Most mics run at
+// 44.1/48 kHz so we resample (proper interpolation via OfflineAudioContext).
+// Windows are WINDOW_S long, polled every POLL_MS. Each inference yields
+// multiple YAMNet frames (~0.96s window, 0.48s hop inside the model) which
+// we push into a rolling ScoreBuffer for cross-window aggregation — this is
+// what suppresses per-frame noise.
 const YAMNET_SR = 16000;
-const WINDOW_S = 1.5;
-const POLL_MS = 750;
-const COOLDOWN = 3000;
 const MODEL_URL = "https://tfhub.dev/google/tfjs-model/yamnet/tfjs/1";
-let THRESHOLD = 0.20;
 
 let model = null;
 let audioCtx = null;
@@ -350,13 +356,24 @@ let samples = [];
 let nativeSR = 44100;
 let timer = null;
 let listening = false;
-let lastHit = 0;
+
+const scoreBuffer = new ScoreBuffer();
+const cooldown = new CooldownGate(COOLDOWN_MS);
+
+// Diagnostic ring buffer — top-5 per frame with timestamps. Only populated
+// when DEBUG is on. Exported as JSONL via the settings button.
+const debugRing = [];
+function debugPush(entry) {
+  if (!DEBUG) return;
+  debugRing.push(entry);
+  if (debugRing.length > DEBUG_RING_SIZE) debugRing.shift();
+}
 
 async function loadModel() {
   statusEl.textContent = "Loading YAMNet…";
   addLog("Fetching YAMNet from TF Hub…");
   model = await window.tf.loadGraphModel(MODEL_URL, { fromTFHub: true });
-  addLog("YAMNet ready — 11 Notify classes active.");
+  addLog("YAMNet ready — 11 sound classes active.");
   statusEl.textContent = "Ready";
 }
 
@@ -381,12 +398,27 @@ async function resample(buf, fromSR) {
   return (await dst.startRendering()).getChannelData(0);
 }
 
+// Compute summary stats over a Float32Array for the pre-inference debug log.
+function waveformStats(arr) {
+  let mn = Infinity, mx = -Infinity, sum = 0, sumSq = 0;
+  for (let i = 0; i < arr.length; i++) {
+    const v = arr[i];
+    if (v < mn) mn = v;
+    if (v > mx) mx = v;
+    sum += v;
+    sumSq += v * v;
+  }
+  const mean = sum / arr.length;
+  const rms = Math.sqrt(sumSq / arr.length);
+  return { min: mn, max: mx, mean, rms };
+}
+
 // Core detection loop — runs every POLL_MS while listening.
-// Grabs the latest audio window, feeds it through YAMNet, and checks if any
-// of our monitored classes scored above the threshold. Because we merged
-// related YAMNet classes (e.g. siren + smoke detector → "Fire Alarm"),
-// we take the max score across all indices in a group so any one of them
-// firing is enough to trigger the alert.
+// 1. Snap the most recent WINDOW_S of mic samples, resample to 16 kHz mono float32
+// 2. Run YAMNet — yields a [frames × 521] tensor
+// 3. Push each frame into the rolling ScoreBuffer (last AGGREGATION.windowSec)
+// 4. Aggregate (consecutive-N or average) and check each group's per-class threshold
+// 5. Per-group cooldown prevents alert spam
 async function runInference() {
   if (!model || !listening) return;
 
@@ -395,58 +427,80 @@ async function runInference() {
 
   const snap = Float32Array.from(samples.slice(-need));
 
-  let wv, s0, sm, arr;
+  let wv, s0, arr;
   try {
     const s16 = await resample(snap, nativeSR);
     // clamp to [-1, 1] — occasional mic spikes can push values out of range
-    const cl = s16.map(v => Math.max(-1, Math.min(1, v)));
+    const cl = new Float32Array(s16.length);
+    for (let i = 0; i < s16.length; i++) cl[i] = Math.max(-1, Math.min(1, s16[i]));
+
+    // Silence gate: skip inference on essentially-silent input to keep noise
+    // predictions out of the rolling buffer (one quiet frame can briefly
+    // poison an averaging window). Computed before tensor allocation.
+    const st = waveformStats(cl);
+    if (MIN_RMS > 0 && st.rms < MIN_RMS) {
+      console.debug(
+        `[YAMNet skip] rms=${st.rms.toFixed(5)} < ${MIN_RMS} (silence gate)`
+      );
+      return;
+    }
+
     wv = window.tf.tensor1d(cl);
+    // Debug log immediately before inference — verifies shape/dtype/range.
+    console.debug(
+      `[YAMNet input] shape=[${wv.shape.join(",")}] dtype=${wv.dtype} ` +
+      `len=${cl.length} min=${st.min.toFixed(4)} max=${st.max.toFixed(4)} ` +
+      `mean=${st.mean.toFixed(4)} rms=${st.rms.toFixed(4)}`
+    );
+
     const out = model.execute({ waveform: wv });
-    // YAMNet can return multiple frames; average them into one 521-d vector
     s0 = Array.isArray(out) ? out[0] : out;
-    sm = window.tf.mean(s0, 0);
-    arr = await sm.array();
+    // Keep all frames — push them individually into the rolling buffer so
+    // aggregation operates on raw per-frame scores, not within-window means.
+    arr = await s0.array(); // [frames, 521]
   } catch (e) {
     addLog("Inference error: " + e.message);
     return;
   } finally {
-    // always clean up tensors to avoid memory leaks
     wv?.dispose();
     s0?.dispose();
-    sm?.dispose();
   }
 
-  const now = Date.now();
-  if (now - lastHit <= COOLDOWN) return;
-
-  // helpful for debugging — shows raw top-5 classes in console
-  const top5 = arr.map((v, i) => [i, v]).sort((a, b) => b[1] - a[1]).slice(0, 5);
-  console.log("Top-5 YAMNet:", top5.map(([i, v]) => `[${i}] ${v.toFixed(3)}`).join("  "));
-
-  // find the highest-scoring enabled sound across all our merged class groups
-  let best = null;
-  let bestScore = 0;
-
-  for (const s of SOUNDS) {
-    if (!enabled[s.id]) continue;
-    // max across all indices in this group — any one class can trigger the alert
-    const sc = Math.max(...s.idx.map(i => arr[i] ?? 0));
-    if (sc >= THRESHOLD && sc > bestScore) {
-      best = s;
-      bestScore = sc;
+  const tNow = Date.now();
+  const frames = Array.isArray(arr[0]) ? arr : [arr];
+  // Stagger frame timestamps backwards so the buffer's time-based eviction
+  // approximates real frame arrival times (YAMNet hop is ~0.48s).
+  const hopMs = 480;
+  frames.forEach((f, i) => {
+    const t = tNow - (frames.length - 1 - i) * hopMs;
+    scoreBuffer.push(f, t);
+    if (DEBUG) {
+      const top5 = Array.from(f)
+        .map((v, idx) => [idx, v])
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([idx, v]) => ({ index: idx, label: YAMNET_CLASS_NAMES[idx], score: +v.toFixed(4) }));
+      debugPush({ t, top5 });
+      console.debug("[frame top5]", new Date(t).toISOString(), top5);
     }
-  }
+  });
 
-  if (best) {
-    lastHit = now;
-    showAlert(best, bestScore);
-    addLog(`${best.emoji} ${best.label} — score ${bestScore.toFixed(3)}`);
-    beep(best.tier);
-    notify(best);
-    await sendEmail(best, bestScore);
-    await saveSoundEvent(best, bestScore);
-    await flashScreen(3);
-  }
+  const hit = pickBestFiring(SOUNDS, scoreBuffer, enabled, THRESHOLD_MULTIPLIER, AGGREGATION, TOP_K_GATE);
+  if (!hit) return;
+  if (!cooldown.ready(hit.group.id, tNow)) return;
+  cooldown.mark(hit.group.id, tNow);
+
+  const { group: best, score: bestScore } = hit;
+  showAlert(best, bestScore);
+  addLog(
+    `${best.emoji} ${best.label} — score ${bestScore.toFixed(3)} ` +
+    `(thr ${effectiveThreshold(best, THRESHOLD_MULTIPLIER).toFixed(2)}, ${AGGREGATION.strategy})`
+  );
+  beep(best.tier);
+  notify(best);
+  await sendEmail(best, bestScore);
+  await saveSoundEvent(best, bestScore);
+  await flashScreen(3);
 }
 
 // Spin up the mic, wire it into a ScriptProcessor that feeds our sample buffer,
@@ -558,6 +612,7 @@ function stopListening() {
   micStream = null;
   audioCtx = null;
   samples = [];
+  scoreBuffer.clear();
   listening = false;
 
   if (startBtn) startBtn.disabled = false;
@@ -570,6 +625,26 @@ function stopListening() {
 
 startBtn.onclick = startListening;
 stopBtn.onclick = stopListening;
+
+// Diagnostic mode wiring — only revealed when DEBUG is on.
+if (DEBUG) {
+  const row = document.getElementById("debugRow");
+  if (row) row.style.display = "";
+  const btn = document.getElementById("downloadDebug");
+  if (btn) {
+    btn.onclick = () => {
+      const body = debugRing.map(e => JSON.stringify(e)).join("\n");
+      const blob = new Blob([body], { type: "application/jsonl" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `notify-debug-${new Date().toISOString().replace(/[:.]/g, "-")}.jsonl`;
+      a.click();
+      URL.revokeObjectURL(url);
+    };
+  }
+  addLog(`Diagnostic mode ON — buffering up to ${DEBUG_RING_SIZE} frames.`);
+}
 
 // Visual flash for deaf/HoH users — briefly whites out the screen so it's
 // impossible to miss even in peripheral vision.
