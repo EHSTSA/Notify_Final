@@ -1,4 +1,3 @@
-
 import {
   onAuthStateChanged,
   signOut,
@@ -12,33 +11,21 @@ import {
 } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-firestore.js";
 import { auth, db } from "./firebase.js";
 
-// ── EmailJS config ───────────────────────────────────────────────────────────
-// Uses Resend under the hood via EmailJS — fires off an email when a sound
-// is detected and the user has email alerts turned on in settings.
-const EMAILJS_SERVICE_ID = "TSA-Sound-Detector";
+// ── EmailJS ───────────────────────────────────────────────────────────────────
+const EMAILJS_SERVICE_ID  = "TSA-Sound-Detector";
 const EMAILJS_TEMPLATE_ID = "template_fa9wwjj";
 
 async function sendEmail(sound, score) {
-  const emailSetting = document.getElementById("emailSetting");
+  const emailSetting      = document.getElementById("emailSetting");
   const emailAddressInput = document.getElementById("emailAddress");
-
-  if (!emailSetting || !emailSetting.checked) return;
-
+  if (!emailSetting?.checked) return;
   const toEmail = emailAddressInput?.value.trim();
-  if (!toEmail) {
-    addLog("📧 Email failed: no email address entered.");
-    return;
-  }
-
+  if (!toEmail) { addLog("📧 Email failed: no email address entered."); return; }
   try {
     await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
-      email: toEmail,
-      sound: sound.label,
-      emoji: sound.emoji,
-      score: score.toFixed(3),
-      time: new Date().toLocaleString(),
+      email: toEmail, sound: sound.label, emoji: sound.emoji,
+      score: score.toFixed(3), time: new Date().toLocaleString(),
     });
-
     addLog(`📧 Email sent for ${sound.label} to ${toEmail}`);
   } catch (e) {
     console.error("EmailJS send failed:", e);
@@ -47,167 +34,150 @@ async function sendEmail(sound, score) {
 }
 
 // ── Auth DOM ──────────────────────────────────────────────────────────────────
-const authScreen = document.getElementById("authScreen");
-const mainApp = document.getElementById("mainApp");
-const authErrorEl = document.getElementById("authError");
-const userEmailEl = document.getElementById("userEmail");
-const tabSignIn = document.getElementById("tabSignIn");
-const tabSignUp = document.getElementById("tabSignUp");
-const emailInput = document.getElementById("emailInput");
-const passInput = document.getElementById("passInput");
+const authScreen       = document.getElementById("authScreen");
+const mainApp          = document.getElementById("mainApp");
+const authErrorEl      = document.getElementById("authError");
+const userEmailEl      = document.getElementById("userEmail");
+const tabSignIn        = document.getElementById("tabSignIn");
+const tabSignUp        = document.getElementById("tabSignUp");
+const emailInput       = document.getElementById("emailInput");
+const passInput        = document.getElementById("passInput");
 const passConfirmInput = document.getElementById("passConfirmInput");
-const signInBtn = document.getElementById("signInBtn");
-const signUpBtn = document.getElementById("signUpBtn");
-const signOutBtn = document.getElementById("signOutBtn");
+const signInBtn        = document.getElementById("signInBtn");
+const signUpBtn        = document.getElementById("signUpBtn");
+const signOutBtn       = document.getElementById("signOutBtn");
 
-// ── Auth helpers ──────────────────────────────────────────────────────────────
-// Thin wrappers so we don't repeat the same show/hide/error logic everywhere.
 function authErr(msg) {
   authErrorEl.textContent = msg;
   authErrorEl.style.display = msg ? "block" : "none";
 }
-
 function setBusy(btn, busy) {
   btn.disabled = busy;
   if (!btn._t) btn._t = btn.textContent;
   btn.textContent = busy ? "Please wait…" : btn._t;
 }
-
 function niceError(code) {
   return ({
-    "auth/user-not-found": "No account found with that email.",
-    "auth/wrong-password": "Incorrect password.",
-    "auth/invalid-credential": "Incorrect email or password.",
-    "auth/email-already-in-use": "An account with that email already exists.",
-    "auth/invalid-email": "Please enter a valid email address.",
-    "auth/weak-password": "Password must be at least 6 characters.",
-    "auth/popup-closed-by-user": "Sign-in popup was closed.",
+    "auth/user-not-found":         "No account found with that email.",
+    "auth/wrong-password":         "Incorrect password.",
+    "auth/invalid-credential":     "Incorrect email or password.",
+    "auth/email-already-in-use":   "An account with that email already exists.",
+    "auth/invalid-email":          "Please enter a valid email address.",
+    "auth/weak-password":          "Password must be at least 6 characters.",
+    "auth/popup-closed-by-user":   "Sign-in popup was closed.",
     "auth/network-request-failed": "Network error — check your connection.",
   })[code] || `Error: ${code}`;
 }
 
-// ── Auth tab switch ───────────────────────────────────────────────────────────
 tabSignIn.onclick = () => {
-  tabSignIn.classList.add("active");
-  tabSignUp.classList.remove("active");
+  tabSignIn.classList.add("active"); tabSignUp.classList.remove("active");
   passConfirmInput.style.display = "none";
-  signInBtn.style.display = "block";
-  signUpBtn.style.display = "none";
+  signInBtn.style.display = "block"; signUpBtn.style.display = "none";
   authErr("");
 };
-
 tabSignUp.onclick = () => {
-  tabSignUp.classList.add("active");
-  tabSignIn.classList.remove("active");
+  tabSignUp.classList.add("active"); tabSignIn.classList.remove("active");
   passConfirmInput.style.display = "block";
-  signUpBtn.style.display = "block";
-  signInBtn.style.display = "none";
+  signUpBtn.style.display = "block"; signInBtn.style.display = "none";
   authErr("");
 };
-
 signInBtn.onclick = async () => {
-  authErr("");
-  setBusy(signInBtn, true);
-  try {
-    await signInWithEmailAndPassword(auth, emailInput.value.trim(), passInput.value);
-  } catch (e) {
-    authErr(niceError(e.code));
-  } finally {
-    setBusy(signInBtn, false);
-  }
+  authErr(""); setBusy(signInBtn, true);
+  try { await signInWithEmailAndPassword(auth, emailInput.value.trim(), passInput.value); }
+  catch (e) { authErr(niceError(e.code)); }
+  finally   { setBusy(signInBtn, false); }
 };
-
 signUpBtn.onclick = async () => {
   authErr("");
-  if (passInput.value !== passConfirmInput.value) {
-    authErr("Passwords don't match.");
-    return;
-  }
+  if (passInput.value !== passConfirmInput.value) { authErr("Passwords don't match."); return; }
   setBusy(signUpBtn, true);
-  try {
-    await createUserWithEmailAndPassword(auth, emailInput.value.trim(), passInput.value);
-  } catch (e) {
-    authErr(niceError(e.code));
-  } finally {
-    setBusy(signUpBtn, false);
-  }
+  try { await createUserWithEmailAndPassword(auth, emailInput.value.trim(), passInput.value); }
+  catch (e) { authErr(niceError(e.code)); }
+  finally   { setBusy(signUpBtn, false); }
 };
-
-signOutBtn.onclick = () => {
-  stopListening();
-  signOut(auth);
-};
+signOutBtn.onclick = () => { stopListening(); signOut(auth); };
 
 onAuthStateChanged(auth, user => {
   if (user) {
     authScreen.style.display = "none";
-    mainApp.style.display = "block";
-    userEmailEl.textContent = user.displayName || user.email;
+    mainApp.style.display    = "block";
+    userEmailEl.textContent  = user.displayName || user.email;
   } else {
     authScreen.style.display = "flex";
-    mainApp.style.display = "none";
+    mainApp.style.display    = "none";
     stopListening();
   }
 });
 
-// ── Sound definitions ────────────────────────────────────────────────────────
-// Each entry maps one or more YAMNet class indices to a single user-facing label.
-// We merge classes that mean the same thing in practice (e.g. smoke detector,
-// siren, and buzzer all just mean "fire alarm is going off") so the user gets
-// one clear alert instead of three confusing ones.
-//
-// idx values are YAMNet's 521-class output indices — see the class map at
+// ── Sound definitions ─────────────────────────────────────────────────────────
+// YAMNet outputs 521 classes. Each sound maps one or more class indices so
+// that any related class can trigger the alert. We take MAX across all indices.
+// Full class list:
 // https://github.com/tensorflow/models/blob/master/research/audioset/yamnet/yamnet_class_map.csv
 const SOUNDS = [
-  // --- danger: things you need to act on immediately ---
-  { id: "firealarm", idx: [396, 397, 388, 389, 390, 398], label: "Fire Alarm", emoji: "🚨", tier: "danger", notif: "Fire alarm detected — check your surroundings!" },
-  { id: "glass",     idx: [60, 61],                       label: "Glass Shatter", emoji: "💥", tier: "danger", notif: "Glass breaking detected!" },
-
-  // --- warn: not life-threatening but you should know ---
-  { id: "baby",      idx: [14, 15],              label: "Baby Crying", emoji: "👶", tier: "warn", notif: "Baby crying detected." },
-  { id: "horn",      idx: [325, 326, 302, 303],  label: "Horn",        emoji: "📯", tier: "warn", notif: "Horn detected nearby." },
-  { id: "reversing", idx: [329],                  label: "Reversing Beeps", emoji: "🔁", tier: "warn", notif: "Reversing vehicle detected." },
-
-  // --- info: everyday sounds worth surfacing ---
-  { id: "doorbell",  idx: [379, 380],  label: "Doorbell",          emoji: "🔔", tier: "info", notif: "Someone rang the doorbell." },
-  { id: "phone",     idx: [400, 401],        label: "Telephone Ringing", emoji: "📞", tier: "info", notif: "Telephone ringing." },
-  { id: "alarm",     idx: [393, 394],        label: "Alarm Clock",       emoji: "⏰", tier: "info", notif: "Alarm clock going off." },
-  { id: "microwave", idx: [375],             label: "Microwave",         emoji: "📡", tier: "info", notif: "Microwave beep detected." },
-  { id: "dog",       idx: [74, 75, 76],      label: "Dog Barking",       emoji: "🐕", tier: "info", notif: "Dog barking detected." },
-  { id: "vacuum",    idx: [373],             label: "Vacuum Cleaner",    emoji: "🌀", tier: "info", notif: "Vacuum cleaner detected." },
+  {
+    id: "firealarm", tier: "danger", emoji: "🚨", label: "Fire Alarm",
+    notif: "Fire alarm detected — check your surroundings!",
+    idx: [388, 389, 390, 393, 394, 396, 397, 398],
+    // 388=Smoke detector, 389=Fire alarm, 390=Alarm, 393=Buzzer,
+    // 394=Alarm clock, 396=Siren, 397=Civil defense siren, 398=Whistle
+  },
+  {
+    id: "glass", tier: "danger", emoji: "💥", label: "Glass Breaking",
+    notif: "Glass breaking detected!",
+    idx: [60, 61],
+    // 60=Glass, 61=Shatter
+  },
+  {
+    id: "baby", tier: "warn", emoji: "👶", label: "Baby Crying",
+    notif: "Baby crying detected.",
+    idx: [14, 15],
+    // 14=Crying, sobbing, 15=Baby cry, infant cry
+  },
+  {
+    id: "carhorn", tier: "warn", emoji: "📯", label: "Car Horn",
+    notif: "Car horn detected nearby.",
+    idx: [325, 326, 327],
+    // 325=Car horn, honking, 326=Toot, 327=Truck horn
+  },
+  {
+    id: "doorbell", tier: "info", emoji: "🔔", label: "Doorbell",
+    notif: "Someone rang the doorbell.",
+    idx: [379, 380],
+    // 379=Doorbell, 380=Ding-dong
+  },
+  {
+    id: "dog", tier: "info", emoji: "🐕", label: "Dog Barking",
+    notif: "Dog barking detected.",
+    idx: [74, 75, 76, 77],
+    // 74=Dog, 75=Bark, 76=Yip, 77=Howl
+  },
 ];
 
 const enabled = Object.fromEntries(SOUNDS.map(s => [s.id, true]));
 
 // ── App DOM ───────────────────────────────────────────────────────────────────
-const statusEl = document.getElementById("status");
-const statusOrb = document.getElementById("statusOrb");
-const startBtn = document.getElementById("startBtn");
-const stopBtn = document.getElementById("stopBtn");
-const alertBox = document.getElementById("alertBox");
-const eventLog = document.getElementById("eventLog");
-const settingsBtn = document.getElementById("settingsBtn");
-const settingsPanel = document.getElementById("settingsPanel");
-const notifSetting = document.getElementById("notifSetting");
-const darkSetting = document.getElementById("darkSetting");
+const statusEl        = document.getElementById("status");
+const statusOrb       = document.getElementById("statusOrb");
+const startBtn        = document.getElementById("startBtn");
+const stopBtn         = document.getElementById("stopBtn");
+const alertBox        = document.getElementById("alertBox");
+const eventLog        = document.getElementById("eventLog");
+const settingsBtn     = document.getElementById("settingsBtn");
+const settingsPanel   = document.getElementById("settingsPanel");
+const notifSetting    = document.getElementById("notifSetting");
+const darkSetting     = document.getElementById("darkSetting");
 const thresholdSlider = document.getElementById("thresholdSlider");
-const thresholdVal = document.getElementById("thresholdVal");
-const clearLogBtn = document.getElementById("clearLog");
+const thresholdVal    = document.getElementById("thresholdVal");
+const clearLogBtn     = document.getElementById("clearLog");
 
 // ── Sound toggles ─────────────────────────────────────────────────────────────
 (function buildToggles() {
   const container = document.getElementById("soundToggles");
-
-  [
-    ["🚨 Emergency", "danger"],
-    ["⚠️ Traffic & Safety", "warn"],
-    ["ℹ️ Everyday", "info"]
-  ].forEach(([label, tier]) => {
+  [["🚨 Emergency","danger"],["⚠️ Safety","warn"],["ℹ️ Everyday","info"]].forEach(([label, tier]) => {
     const hdr = document.createElement("div");
-    hdr.className = "sound-group-label";
-    hdr.textContent = label;
+    hdr.className = "sound-group-label"; hdr.textContent = label;
     container.appendChild(hdr);
-
     SOUNDS.filter(s => s.tier === tier).forEach(s => {
       const row = document.createElement("div");
       row.className = "setting-row";
@@ -216,13 +186,9 @@ const clearLogBtn = document.getElementById("clearLog");
         <label class="toggle">
           <input type="checkbox" id="snd-${s.id}" checked>
           <span class="toggle-slider"></span>
-        </label>
-      `;
+        </label>`;
       container.appendChild(row);
-
-      row.querySelector("input").onchange = e => {
-        enabled[s.id] = e.target.checked;
-      };
+      row.querySelector("input").onchange = e => { enabled[s.id] = e.target.checked; };
     });
   });
 })();
@@ -233,11 +199,7 @@ function addLog(msg) {
   eventLog.textContent += `[${ts}] ${msg}\n`;
   eventLog.scrollTop = eventLog.scrollHeight;
 }
-
-clearLogBtn.onclick = () => {
-  eventLog.textContent = "";
-};
-
+clearLogBtn.onclick = () => { eventLog.textContent = ""; };
 settingsBtn.onclick = () => {
   settingsPanel.style.display = settingsPanel.style.display === "block" ? "none" : "block";
 };
@@ -245,7 +207,6 @@ settingsBtn.onclick = () => {
 const savedTheme = localStorage.getItem("audio-detector-theme") || "light";
 document.body.classList.toggle("dark", savedTheme === "dark");
 darkSetting.checked = savedTheme === "dark";
-
 darkSetting.onchange = () => {
   document.body.classList.toggle("dark", darkSetting.checked);
   localStorage.setItem("audio-detector-theme", darkSetting.checked ? "dark" : "light");
@@ -257,70 +218,50 @@ thresholdSlider.oninput = () => {
 };
 
 let alertTO;
-
 function showAlert(sound, score) {
   clearTimeout(alertTO);
-  alertBox.className = `alert-${sound.tier}`;
+  alertBox.className   = `alert-${sound.tier}`;
   alertBox.textContent = `${sound.emoji}  ${sound.label} detected (${score.toFixed(3)})`;
-  alertBox.style.display = "block";
+  alertBox.style.display   = "block";
   alertBox.style.animation = "none";
-  void alertBox.offsetWidth;
+  void alertBox.offsetWidth; // force reflow so CSS animation restarts
   alertBox.style.animation = "";
-  alertTO = setTimeout(() => {
-    alertBox.style.display = "none";
-  }, 8000);
+  alertTO = setTimeout(() => { alertBox.style.display = "none"; }, 8000);
 }
 
 async function notify(sound) {
   if (!notifSetting.checked || !("Notification" in window)) return;
-
-  if (Notification.permission === "default") {
-    await Notification.requestPermission();
-  }
-
+  if (Notification.permission === "default") await Notification.requestPermission();
   if (Notification.permission === "granted") {
-    new Notification(`${sound.emoji} ${sound.label}`, {
-      body: sound.notif
-    });
+    new Notification(`${sound.emoji} ${sound.label}`, { body: sound.notif });
   }
 }
 
-// Quick audio cue so the user knows something was detected even if they're
-// not looking at the screen. Higher pitch + harsher waveform for danger.
+// FIX 2: Beep gets its own short-lived AudioContext so it never touches or
+// closes the mic AudioContext that must stay alive during listening.
 function beep(tier) {
   try {
-    if (!audioCtx || audioCtx.state === "closed") return;
-
-    const o = audioCtx.createOscillator();
-    const g = audioCtx.createGain();
-
+    const bCtx = new AudioContext();
+    const o = bCtx.createOscillator();
+    const g = bCtx.createGain();
     o.frequency.value = tier === "danger" ? 880 : tier === "warn" ? 660 : 440;
     o.type = tier === "danger" ? "square" : "sine";
-
-    g.gain.setValueAtTime(0.0001, audioCtx.currentTime);
-    g.gain.exponentialRampToValueAtTime(0.08, audioCtx.currentTime + 0.01);
-    g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.35);
-
-    o.connect(g);
-    g.connect(audioCtx.destination);
-
-    o.start();
-    o.stop(audioCtx.currentTime + 0.4);
-  } catch (e) {
-    console.error("Beep error:", e);
-  }
+    g.gain.setValueAtTime(0.0001, bCtx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.08,   bCtx.currentTime + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, bCtx.currentTime + 0.35);
+    o.connect(g); g.connect(bCtx.destination);
+    o.start(); o.stop(bCtx.currentTime + 0.4);
+    setTimeout(() => bCtx.close(), 1000);
+  } catch (e) { console.error("Beep error:", e); }
 }
 
 async function saveSoundEvent(sound, score) {
   const user = auth.currentUser;
   if (!user) return;
-
   try {
     await addDoc(collection(db, "sound_events"), {
-      userId: user.uid,
-      soundLabel: sound.label,
-      confidence: Number(score),
-      detectedAt: serverTimestamp()
+      userId: user.uid, soundLabel: sound.label,
+      confidence: Number(score), detectedAt: serverTimestamp(),
     });
   } catch (e) {
     console.error("Failed to save sound event:", e);
@@ -329,116 +270,146 @@ async function saveSoundEvent(sound, score) {
 }
 
 // ── YAMNet inference pipeline ─────────────────────────────────────────────────
-// YAMNet expects mono 16 kHz audio. Most mics run at 44.1/48 kHz so we
-// resample on the fly. We grab 1.5s windows every 750ms (overlapping) to
-// balance latency vs. accuracy, and debounce detections with a 3s cooldown
-// so we don't spam the user with the same alert.
-const YAMNET_SR = 16000;
-const WINDOW_S = 1.5;
-const POLL_MS = 750;
-const COOLDOWN = 3000;
-const MODEL_URL = "https://tfhub.dev/google/tfjs-model/yamnet/tfjs/1";
+// FIX 1: Replaced deprecated ScriptProcessor + plain Array with an AnalyserNode
+//        + fixed-size Float32Array ring buffer. No more O(n²) spread copies or
+//        GC pauses from growing arrays.
+// FIX 3: resampleTo16k() now uses a single OfflineAudioContext at YAMNET_SR,
+//        feeding it a buffer created at fromSR. The browser's sinc resampler
+//        handles the rate conversion implicitly — no double-context overhead.
+// FIX 4: YAMNet returns [scores, embeddings, log_mel_spectrogram]. We always
+//        grab index 0 safely and dispose all output tensors.
+// FIX 5: lastHit is now a per-sound map so a dog bark can't suppress a
+//        simultaneous fire alarm detection.
+
+const YAMNET_SR  = 16000;   // YAMNet required input rate
+const WINDOW_S   = 1.5;     // seconds of audio per inference call
+const POLL_MS    = 500;     // inference frequency (ms)
+const CAPTURE_MS = 46;      // frame capture interval (~2048 samples @ 44.1kHz)
+const COOLDOWN   = 3000;    // ms between alerts for the same sound
+const MODEL_URL  = "https://tfhub.dev/google/tfjs-model/yamnet/tfjs/1";
+
 let THRESHOLD = 0.20;
 
-let model = null;
-let audioCtx = null;
-let micStream = null;
-let srcNode = null;
-let procNode = null;
-let silentGain = null;
-let samples = [];
-let nativeSR = 44100;
-let timer = null;
-let listening = false;
-let lastHit = 0;
+let model         = null;
+let audioCtx      = null;
+let micStream     = null;
+let srcNode       = null;
+let analyser      = null;
+let silentGain    = null;
+let nativeSR      = 44100;
+let ringBuffer    = null;   // Float32Array — fixed-size ring buffer
+let ringHead      = 0;      // next write index
+let ringFull      = false;  // true once buffer has wrapped at least once
+let captureTimer  = null;
+let inferenceTimer = null;
+let listening     = false;
+let lastHit       = {};     // { soundId: lastAlertTimestamp }
 
 async function loadModel() {
   statusEl.textContent = "Loading YAMNet…";
-  addLog("Fetching YAMNet from TF Hub…");
-  model = await window.tf.loadGraphModel(MODEL_URL, { fromTFHub: true });
-  addLog("YAMNet ready — 11 Notify classes active.");
-  statusEl.textContent = "Ready";
+  addLog("Fetching YAMNet from TF Hub (first load ~5 s on slow connections)…");
+  try {
+    model = await window.tf.loadGraphModel(MODEL_URL, { fromTFHub: true });
+    // Warm-up: one zero-input pass so the first real inference isn't slow
+    const dummy  = window.tf.zeros([YAMNET_SR]);
+    const warmOut = model.execute({ waveform: dummy });
+    (Array.isArray(warmOut) ? warmOut : [warmOut]).forEach(t => t.dispose());
+    dummy.dispose();
+    addLog("✅ YAMNet ready.");
+    statusEl.textContent = "Ready";
+  } catch (e) {
+    addLog("❌ YAMNet load failed: " + e.message);
+    statusEl.textContent = "Load failed";
+    throw e;
+  }
 }
 
-// Resample from the mic's native rate down to 16 kHz for YAMNet.
-// Uses OfflineAudioContext which handles the interpolation for us —
-// way simpler (and better quality) than doing it manually.
-async function resample(buf, fromSR) {
-  if (fromSR === YAMNET_SR) return buf;
-
-  const outLen = Math.ceil(buf.length * YAMNET_SR / fromSR);
-
-  const tmp = new OfflineAudioContext(1, buf.length, fromSR);
-  const src = tmp.createBuffer(1, buf.length, fromSR);
-  src.getChannelData(0).set(buf);
-
-  const dst = new OfflineAudioContext(1, outLen, YAMNET_SR);
-  const n = dst.createBufferSource();
-  n.buffer = src;
-  n.connect(dst.destination);
-  n.start(0);
-
-  return (await dst.startRendering()).getChannelData(0);
+// FIX 3: Single OfflineAudioContext at target rate. Browser resamples for us.
+async function resampleTo16k(float32, fromSR) {
+  if (fromSR === YAMNET_SR) return float32;
+  const outLen = Math.ceil(float32.length * YAMNET_SR / fromSR);
+  const offCtx = new OfflineAudioContext(1, outLen, YAMNET_SR);
+  const buf    = offCtx.createBuffer(1, float32.length, fromSR);
+  buf.getChannelData(0).set(float32);
+  const src = offCtx.createBufferSource();
+  src.buffer = buf;
+  src.connect(offCtx.destination);
+  src.start(0);
+  const rendered = await offCtx.startRendering();
+  return rendered.getChannelData(0);
 }
 
-// Core detection loop — runs every POLL_MS while listening.
-// Grabs the latest audio window, feeds it through YAMNet, and checks if any
-// of our monitored classes scored above the threshold. Because we merged
-// related YAMNet classes (e.g. siren + smoke detector → "Fire Alarm"),
-// we take the max score across all indices in a group so any one of them
-// firing is enough to trigger the alert.
+// Read the ring buffer in chronological order (oldest → newest).
+function readRing() {
+  if (!ringFull) return ringBuffer.slice(0, ringHead);
+  const out = new Float32Array(ringBuffer.length);
+  out.set(ringBuffer.subarray(ringHead));
+  out.set(ringBuffer.subarray(0, ringHead), ringBuffer.length - ringHead);
+  return out;
+}
+
+// FIX 1: Capture via AnalyserNode.getFloatTimeDomainData — gives raw PCM
+// in [-1, 1] range, which is exactly what YAMNet wants after resampling.
+function captureFrame() {
+  if (!analyser) return;
+  const chunk = new Float32Array(analyser.fftSize); // 2048 samples
+  analyser.getFloatTimeDomainData(chunk);
+  for (let i = 0; i < chunk.length; i++) {
+    ringBuffer[ringHead] = chunk[i];
+    ringHead = (ringHead + 1) % ringBuffer.length;
+    if (ringHead === 0) ringFull = true;
+  }
+}
+
 async function runInference() {
   if (!model || !listening) return;
 
-  const need = Math.ceil(nativeSR * WINDOW_S);
-  if (samples.length < need) return;
+  const needed = Math.ceil(nativeSR * WINDOW_S);
+  if (!ringFull && ringHead < needed) return; // not enough audio yet
 
-  const snap = Float32Array.from(samples.slice(-need));
+  const all  = readRing();
+  const snap = all.length >= needed ? all.slice(all.length - needed) : all;
 
-  let wv, s0, sm, arr;
+  let wv, outTensors, scores;
   try {
-    const s16 = await resample(snap, nativeSR);
-    // clamp to [-1, 1] — occasional mic spikes can push values out of range
-    const cl = s16.map(v => Math.max(-1, Math.min(1, v)));
-    wv = window.tf.tensor1d(cl);
-    const out = model.execute({ waveform: wv });
-    // YAMNet can return multiple frames; average them into one 521-d vector
-    s0 = Array.isArray(out) ? out[0] : out;
-    sm = window.tf.mean(s0, 0);
-    arr = await sm.array();
+    const s16     = await resampleTo16k(snap, nativeSR);
+    const clamped = s16.map(v => Math.max(-1, Math.min(1, v)));
+    wv = window.tf.tensor1d(clamped);
+
+    // FIX 4: always treat output as array, grab scores at index 0
+    outTensors = model.execute({ waveform: wv });
+    const scoresTensor = Array.isArray(outTensors) ? outTensors[0] : outTensors;
+    const meanScores   = window.tf.mean(scoresTensor, 0); // avg over frames → [521]
+    scores = await meanScores.array();
+    meanScores.dispose();
   } catch (e) {
-    addLog("Inference error: " + e.message);
+    addLog("⚠️ Inference error: " + e.message);
     return;
   } finally {
-    // always clean up tensors to avoid memory leaks
     wv?.dispose();
-    s0?.dispose();
-    sm?.dispose();
+    (Array.isArray(outTensors) ? outTensors : [outTensors]).forEach(t => t?.dispose());
   }
 
+  // Top-5 debug output — open browser DevTools console to see live scores
+  const top5 = scores
+    .map((v, i) => [i, v])
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5);
+  console.log("YAMNet top-5:", top5.map(([i, v]) => `[${i}] ${v.toFixed(3)}`).join("  "));
+
   const now = Date.now();
-  if (now - lastHit <= COOLDOWN) return;
-
-  // helpful for debugging — shows raw top-5 classes in console
-  const top5 = arr.map((v, i) => [i, v]).sort((a, b) => b[1] - a[1]).slice(0, 5);
-  console.log("Top-5 YAMNet:", top5.map(([i, v]) => `[${i}] ${v.toFixed(3)}`).join("  "));
-
-  // find the highest-scoring enabled sound across all our merged class groups
-  let best = null;
-  let bestScore = 0;
+  let best = null, bestScore = 0;
 
   for (const s of SOUNDS) {
     if (!enabled[s.id]) continue;
-    // max across all indices in this group — any one class can trigger the alert
-    const sc = Math.max(...s.idx.map(i => arr[i] ?? 0));
-    if (sc >= THRESHOLD && sc > bestScore) {
-      best = s;
-      bestScore = sc;
-    }
+    // FIX 5: independent cooldown per sound
+    if (now - (lastHit[s.id] ?? 0) < COOLDOWN) continue;
+    const sc = Math.max(...s.idx.map(i => scores[i] ?? 0));
+    if (sc >= THRESHOLD && sc > bestScore) { best = s; bestScore = sc; }
   }
 
   if (best) {
-    lastHit = now;
+    lastHit[best.id] = now;
     showAlert(best, bestScore);
     addLog(`${best.emoji} ${best.label} — score ${bestScore.toFixed(3)}`);
     beep(best.tier);
@@ -449,10 +420,6 @@ async function runInference() {
   }
 }
 
-// Spin up the mic, wire it into a ScriptProcessor that feeds our sample buffer,
-// and kick off the inference loop. We disable all browser audio processing
-// (echo cancel, noise suppression, AGC) because YAMNet needs the raw signal —
-// those filters can mangle the frequencies we're trying to classify.
 async function startListening() {
   if (!model) await loadModel();
   if (listening) return;
@@ -461,11 +428,12 @@ async function startListening() {
   try {
     stream = await navigator.mediaDevices.getUserMedia({
       audio: {
-        echoCancellation: false,
+        echoCancellation: false, // must be off — processing mangles YAMNet input
         noiseSuppression: false,
-        autoGainControl: false
+        autoGainControl:  false,
+        channelCount:     1,
       },
-      video: false
+      video: false,
     });
   } catch (e) {
     addLog("Mic error: " + e.message);
@@ -475,113 +443,79 @@ async function startListening() {
 
   try {
     micStream = stream;
-    audioCtx = new AudioContext();
+    audioCtx  = new AudioContext();
+    if (audioCtx.state === "suspended") await audioCtx.resume();
+    nativeSR  = audioCtx.sampleRate;
 
-    if (audioCtx.state === "suspended") {
-      await audioCtx.resume();
-    }
+    srcNode  = audioCtx.createMediaStreamSource(stream);
 
-    nativeSR = audioCtx.sampleRate;
-    samples = [];
+    // FIX 1: AnalyserNode replaces ScriptProcessor
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize               = 2048;  // 2048 PCM samples per capture tick
+    analyser.smoothingTimeConstant = 0;     // raw, unsmoothed
 
-    srcNode = audioCtx.createMediaStreamSource(stream);
-    procNode = audioCtx.createScriptProcessor(4096, 1, 1);
-
-    // route through a silent gain node so audio doesn't play through speakers
     silentGain = audioCtx.createGain();
-    silentGain.gain.value = 0;
+    silentGain.gain.value = 0; // don't echo mic to speakers
 
-    // keep a rolling buffer of ~6 seconds of audio
-    const maxBuf = nativeSR * 6;
-    procNode.onaudioprocess = e => {
-      const chunk = e.inputBuffer.getChannelData(0);
-      samples.push(...chunk);
-      if (samples.length > maxBuf) {
-        samples = samples.slice(samples.length - maxBuf);
-      }
-    };
-
-    srcNode.connect(procNode);
-    procNode.connect(silentGain);
+    srcNode.connect(analyser);
+    analyser.connect(silentGain);
     silentGain.connect(audioCtx.destination);
 
-    listening = true;
-    timer = setInterval(runInference, POLL_MS);
+    // Allocate ring buffer for 6 s of audio
+    ringBuffer = new Float32Array(nativeSR * 6);
+    ringHead   = 0;
+    ringFull   = false;
+    lastHit    = {};
+    listening  = true;
+
+    captureTimer   = setInterval(captureFrame,  CAPTURE_MS);
+    inferenceTimer = setInterval(runInference,  POLL_MS);
+
     startBtn.disabled = true;
-    stopBtn.disabled = false;
+    stopBtn.disabled  = false;
     statusEl.textContent = "Listening…";
     statusOrb.classList.add("listening");
-    addLog(`Mic active at ${nativeSR} Hz → 16 kHz.`);
+    addLog(`🎤 Mic active at ${nativeSR} Hz → resampling to ${YAMNET_SR} Hz for YAMNet.`);
   } catch (e) {
-    console.error("AudioContext/startListening error:", e);
+    console.error("Audio setup error:", e);
     addLog("Audio system error: " + e.message);
     statusEl.textContent = "Audio error";
     stopListening();
   }
 }
 
-// Tear down everything — stop mic, kill timers, disconnect audio graph.
-// Each disconnect is wrapped in try/catch because some nodes may already
-// be disconnected if the browser recycled the context.
 function stopListening() {
-  clearInterval(timer);
-  timer = null;
+  clearInterval(captureTimer);
+  clearInterval(inferenceTimer);
+  captureTimer = inferenceTimer = null;
 
-  try {
-    procNode && (procNode.onaudioprocess = null);
-    procNode?.disconnect();
-  } catch {}
+  try { srcNode?.disconnect();    } catch {}
+  try { analyser?.disconnect();   } catch {}
+  try { silentGain?.disconnect(); } catch {}
+  try { micStream?.getTracks().forEach(t => t.stop()); } catch {}
+  try { if (audioCtx?.state !== "closed") audioCtx?.close(); } catch {}
 
-  try {
-    srcNode?.disconnect();
-  } catch {}
+  srcNode = analyser = silentGain = micStream = audioCtx = null;
+  ringBuffer = null; ringHead = 0; ringFull = false;
+  listening  = false;
 
-  try {
-    silentGain?.disconnect();
-  } catch {}
-
-  try {
-    if (micStream) {
-      micStream.getTracks().forEach(track => track.stop());
-    }
-  } catch {}
-
-  try {
-    if (audioCtx && audioCtx.state !== "closed") {
-      audioCtx.close();
-    }
-  } catch {}
-
-  procNode = null;
-  srcNode = null;
-  silentGain = null;
-  micStream = null;
-  audioCtx = null;
-  samples = [];
-  listening = false;
-
-  if (startBtn) startBtn.disabled = false;
-  if (stopBtn) stopBtn.disabled = true;
-  if (statusEl) statusEl.textContent = "Stopped";
+  if (startBtn)  startBtn.disabled  = false;
+  if (stopBtn)   stopBtn.disabled   = true;
+  if (statusEl)  statusEl.textContent  = "Stopped";
   if (statusOrb) statusOrb.classList.remove("listening");
-
-  addLog("Stopped.");
+  addLog("⏹ Stopped.");
 }
 
 startBtn.onclick = startListening;
-stopBtn.onclick = stopListening;
+stopBtn.onclick  = stopListening;
 
-// Visual flash for deaf/HoH users — briefly whites out the screen so it's
-// impossible to miss even in peripheral vision.
 async function flashScreen(times = 3) {
   const overlay = document.getElementById("flashOverlay");
   if (!overlay) return;
-
   for (let i = 0; i < times; i++) {
     overlay.style.opacity = "1";
-    await new Promise(r => setTimeout(r, 100)); // flash on
-
+    await new Promise(r => setTimeout(r, 100));
     overlay.style.opacity = "0";
-    await new Promise(r => setTimeout(r, 150)); // flash off
+    await new Promise(r => setTimeout(r, 150));
   }
 }
