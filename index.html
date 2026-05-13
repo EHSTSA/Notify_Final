@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Notify</title>
+  <title>notify</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <link rel="stylesheet" href="styles.css">
 </head>
@@ -38,7 +38,7 @@
     <div class="shell">
 
       <div class="header">
-        <h1>Notify</h1>
+        <h1>notify</h1>
         <div class="header-actions">
           <nav class="top-nav" aria-label="Primary">
             <a class="top-nav-link active" href="index.html">Detector</a>
@@ -120,7 +120,7 @@
         <div class="setting-row">
           <div>
             <div class="setting-label">Email alerts</div>
-            <div class="setting-desc">Send an email when Notify is detected</div>
+            <div class="setting-desc">Send an email when a sound is detected</div>
           </div>
           <label class="toggle">
             <input type="checkbox" id="emailSetting">
@@ -144,16 +144,24 @@
 
         <div class="setting-row">
           <div>
-            <div class="setting-label">Confidence threshold</div>
-            <div class="setting-desc">Minimum score to trigger an alert</div>
+            <div class="setting-label">Sensitivity</div>
+            <div class="setting-desc">Multiplier on per-sound thresholds (lower = more sensitive). Per-class values live in config.js.</div>
           </div>
           <div class="slider-wrap">
-            <input type="range" id="thresholdSlider" min="0.05" max="0.95" step="0.01" value="0.20">
-            <span class="slider-val" id="thresholdVal">0.20</span>
+            <input type="range" id="thresholdSlider" min="0.5" max="2.0" step="0.05" value="1.00">
+            <span class="slider-val" id="thresholdVal">1.00×</span>
           </div>
         </div>
 
-        <div class="settings-title mt">Monitored Notify</div>
+        <div class="setting-row" id="debugRow" style="display:none">
+          <div>
+            <div class="setting-label">Diagnostic log</div>
+            <div class="setting-desc">Per-frame top-5 predictions buffered in memory.</div>
+          </div>
+          <button id="downloadDebug" type="button">Download JSONL</button>
+        </div>
+
+        <div class="settings-title mt">Monitored Sounds</div>
         <div id="soundToggles"></div>
       </div>
 
