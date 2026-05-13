@@ -229,7 +229,7 @@ function renderBarChart(summary) {
           },
           title: {
             display: true,
-            text: "Sound label",
+            text: "Notify label",
           },
         },
         y: {
@@ -321,7 +321,7 @@ function renderScatterChart(rows, labels) {
           },
           title: {
             display: true,
-            text: "Sound label",
+            text: "Notify label",
           },
         },
       },
