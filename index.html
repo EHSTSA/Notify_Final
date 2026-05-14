@@ -153,6 +153,14 @@
           </div>
         </div>
 
+        <div class="setting-row">
+          <div>
+            <div class="setting-label">Noise calibration</div>
+            <div class="setting-desc" id="calibSettingDesc">Tune detection sensitivity to your environment</div>
+          </div>
+          <button class="btn btn-secondary" id="calibrateBtn" style="padding:6px 14px;font-size:0.82rem;white-space:nowrap">Calibrate</button>
+        </div>
+
         <div class="setting-row" id="debugRow" style="display:none">
           <div>
             <div class="setting-label">Diagnostic log</div>
@@ -182,6 +190,34 @@
     emailjs.init("RHqaBdMrcFqQqpQsq");
   </script>
   <script type="module" src="app.js"></script>
+
+  <!-- ── Calibration modal ── -->
+  <div id="calibModal" role="dialog" aria-modal="true" aria-labelledby="calibModalTitle">
+    <div class="calib-backdrop" id="calibBackdrop"></div>
+    <div class="calib-card">
+      <div class="calib-title" id="calibModalTitle">Noise Calibration</div>
+      <p class="calib-desc" id="calibModalDesc">Keep the room at its normal noise level, then start the 10-second recording. The detector will adapt its sensitivity to your environment.</p>
+
+      <div id="calibProgressWrap" hidden>
+        <div class="calib-phase" id="calibPhase">Recording baseline noise…</div>
+        <div class="calib-live-row">
+          <span class="calib-live-label">Live level</span>
+          <div class="calib-live-track"><div id="calibLevelBar" class="calib-live-fill"></div></div>
+        </div>
+        <div class="calib-bar-row">
+          <div class="calib-bar-track"><div id="calibProgressBar" class="calib-bar-fill"></div></div>
+          <span id="calibCountdown" class="calib-countdown">10s</span>
+        </div>
+      </div>
+
+      <div id="calibResultWrap" hidden class="calib-result"></div>
+
+      <div class="calib-actions">
+        <button class="btn btn-primary" id="calibStartBtn">Start Calibration</button>
+        <button class="btn btn-secondary" id="calibDoneBtn" hidden>Done</button>
+      </div>
+    </div>
+  </div>
 
   <div id="flashOverlay"></div>
   
