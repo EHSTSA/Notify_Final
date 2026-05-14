@@ -491,6 +491,7 @@ async function runInference() {
   cooldown.mark(hit.group.id, tNow);
 
   const { group: best, score: bestScore } = hit;
+  showFeedbackPopup();
   showAlert(best, bestScore);
   addLog(
     `${best.emoji} ${best.label} — score ${bestScore.toFixed(3)} ` +
@@ -795,4 +796,68 @@ async function flashScreen(times = 3) {
     overlay.style.opacity = "0";
     await new Promise(r => setTimeout(r, 150)); // flash off
   }
+}
+/* ─────────────────────────────
+   Feedback Popup Logic
+───────────────────────────── */
+
+let feedbackTimeout = null;
+
+function showFeedbackPopup() {
+  const popup = document.getElementById("feedbackPopup");
+  const content = document.getElementById("feedbackContent");
+
+  if (!popup || !content) return;
+
+  popup.classList.remove("hidden");
+
+  clearTimeout(feedbackTimeout);
+
+  feedbackTimeout = setTimeout(() => {
+    popup.classList.add("hidden");
+  }, 10000);
+
+  function attachListeners() {
+    const yesBtn = document.getElementById("feedbackYes");
+    const noBtn = document.getElementById("feedbackNo");
+
+    if (yesBtn) {
+      yesBtn.onclick = () => submitFeedback(true);
+    }
+
+    if (noBtn) {
+      noBtn.onclick = () => submitFeedback(false);
+    }
+  }
+
+  function submitFeedback(isAccurate) {
+    clearTimeout(feedbackTimeout);
+
+    console.log("Noise feedback:", isAccurate);
+
+    content.innerHTML = `
+      <div class="feedback-thanks">
+        Thanks for your feedback!
+      </div>
+    `;
+
+    setTimeout(() => {
+      popup.classList.add("hidden");
+
+      content.innerHTML = `
+        <div class="feedback-title">
+          Was this noise accurate?
+        </div>
+
+        <div class="feedback-buttons">
+          <button id="feedbackYes" class="feedback-btn">👍</button>
+          <button id="feedbackNo" class="feedback-btn">👎</button>
+        </div>
+      `;
+
+      attachListeners();
+    }, 1000);
+  }
+
+  attachListeners();
 }
