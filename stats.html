@@ -45,9 +45,6 @@
     .summary-table tr:hover td { background: var(--surface-2); }
     .sound-pill { display: inline-flex; align-items: center; gap: 6px; }
     .sound-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-    .conf-bar-wrap { display: flex; align-items: center; gap: 8px; }
-    .conf-bar { height: 4px; border-radius: 2px; flex: 1; background: var(--border); overflow: hidden; }
-    .conf-bar-fill { height: 100%; border-radius: 2px; }
   </style>
   <script>
     if (localStorage.getItem("audio-detector-theme") === "dark") document.documentElement.classList.add("dark-init");
@@ -136,7 +133,6 @@
             <tr>
               <th>Sound</th>
               <th>Count</th>
-              <th>Avg confidence</th>
               <th>Peak hour</th>
               <th>Last detected</th>
             </tr>
