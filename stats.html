@@ -5,97 +5,82 @@
   <title>Notify - Stats</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <link rel="stylesheet" href="styles.css" />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@600;800&display=swap" rel="stylesheet" />
   <style>
-    :root {
-      --stats-bg: #0d0f14;
-      --stats-surface: #161922;
-      --stats-border: #252933;
-      --stats-accent: #4f9cf9;
-      --stats-accent2: #f97b4f;
-      --stats-accent3: #4ff9b6;
-      --stats-text: #e8eaf0;
-      --stats-muted: #6b7280;
-      --radius: 14px;
-      --font-display: 'Syne', sans-serif;
-      --font-mono: 'DM Mono', monospace;
-    }
+    #statsPage { padding: 20px 16px 40px; }
+    .shell { max-width: 1040px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
 
-    body { background: var(--stats-bg); color: var(--stats-text); font-family: var(--font-mono); margin: 0; }
-
-    .shell { max-width: 1200px; margin: 0 auto; padding: 0 20px 60px; }
-    .header { display: flex; align-items: center; justify-content: space-between; padding: 20px 0 12px; border-bottom: 1px solid var(--stats-border); }
-    .header h1 { font-family: var(--font-display); font-size: 1.3rem; font-weight: 800; letter-spacing: -0.02em; margin: 0; color: var(--stats-text); }
-    .top-nav { display: flex; gap: 4px; }
-    .top-nav-link { padding: 6px 14px; border-radius: 8px; font-size: 0.8rem; font-family: var(--font-mono); color: var(--stats-muted); text-decoration: none; transition: background 0.15s, color 0.15s; }
-    .top-nav-link:hover, .top-nav-link.active { background: var(--stats-surface); color: var(--stats-text); }
-    .header-actions { display: flex; align-items: center; gap: 12px; }
-
-    .user-bar { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; font-size: 0.78rem; color: var(--stats-muted); border-bottom: 1px solid var(--stats-border); margin-bottom: 28px; }
-    .user-bar button { background: transparent; border: 1px solid var(--stats-border); color: var(--stats-muted); padding: 4px 12px; border-radius: 6px; cursor: pointer; font-family: var(--font-mono); font-size: 0.78rem; transition: border-color 0.15s, color 0.15s; }
-    .user-bar button:hover { border-color: var(--stats-accent); color: var(--stats-accent); }
-
-    .filter-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 28px; flex-wrap: wrap; }
-    .filter-bar .label { font-size: 0.72rem; color: var(--stats-muted); letter-spacing: 0.08em; text-transform: uppercase; margin-right: 4px; }
-    .filter-btn { background: var(--stats-surface); border: 1px solid var(--stats-border); color: var(--stats-muted); padding: 6px 16px; border-radius: 8px; cursor: pointer; font-family: var(--font-mono); font-size: 0.8rem; transition: all 0.15s; }
-    .filter-btn:hover { border-color: var(--stats-accent); color: var(--stats-accent); }
-    .filter-btn.active { background: var(--stats-accent); border-color: var(--stats-accent); color: #fff; }
-    .export-btn { margin-left: auto; background: transparent; border: 1px solid var(--stats-border); color: var(--stats-muted); padding: 6px 16px; border-radius: 8px; cursor: pointer; font-family: var(--font-mono); font-size: 0.8rem; display: flex; align-items: center; gap: 6px; transition: all 0.15s; }
-    .export-btn:hover { border-color: var(--stats-accent3); color: var(--stats-accent3); }
+    .filter-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .filter-bar .label { font-size: 0.72rem; color: var(--text-muted); letter-spacing: 0.08em; text-transform: uppercase; margin-right: 4px; }
+    .export-btn { margin-left: auto; background: transparent; border: 1px solid var(--border); color: var(--text-muted); padding: 6px 16px; border-radius: 8px; cursor: pointer; font-family: 'DM Sans', sans-serif; font-size: 0.8rem; display: flex; align-items: center; gap: 6px; transition: all 0.15s; }
+    .export-btn:hover { border-color: var(--accent); color: var(--accent); }
     .export-btn svg { width: 13px; height: 13px; }
 
-    #loadingState, #emptyState { text-align: center; padding: 80px 0; color: var(--stats-muted); font-size: 0.9rem; }
-    #loadingState::before { content: ''; display: block; width: 32px; height: 32px; margin: 0 auto 16px; border: 2px solid var(--stats-border); border-top-color: var(--stats-accent); border-radius: 50%; animation: spin 0.7s linear infinite; }
+    #loadingState, #emptyState { text-align: center; padding: 80px 0; color: var(--text-muted); font-size: 0.9rem; }
+    #loadingState::before { content: ''; display: block; width: 32px; height: 32px; margin: 0 auto 16px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    .kpi-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 24px; }
-    .kpi { background: var(--stats-surface); border: 1px solid var(--stats-border); border-radius: var(--radius); padding: 18px 20px; position: relative; overflow: hidden; }
-    .kpi::before { content: ''; position: absolute; inset: 0; opacity: 0.04; background: radial-gradient(circle at 80% 20%, var(--accent-color, var(--stats-accent)), transparent 60%); }
-    .kpi-value { font-family: var(--font-display); font-size: 2rem; font-weight: 800; line-height: 1; margin-bottom: 6px; color: var(--accent-color, var(--stats-accent)); }
-    .kpi-label { font-size: 0.72rem; color: var(--stats-muted); text-transform: uppercase; letter-spacing: 0.08em; }
+    .kpi-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+    .kpi { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px; position: relative; overflow: hidden; box-shadow: var(--shadow); }
+    .kpi::before { content: ''; position: absolute; inset: 0; opacity: 0.04; background: radial-gradient(circle at 80% 20%, var(--accent-color, var(--accent)), transparent 60%); }
+    .kpi-value { font-size: 2rem; font-weight: 700; line-height: 1; margin-bottom: 6px; color: var(--accent-color, var(--accent)); }
+    .kpi-label { font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em; }
 
-    .chart-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+    .chart-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
     .chart-grid.full { grid-template-columns: 1fr; }
     @media (max-width: 700px) { .chart-grid { grid-template-columns: 1fr; } }
 
-    .card { background: var(--stats-surface); border: 1px solid var(--stats-border); border-radius: var(--radius); padding: 20px; }
-    .card-title { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--stats-muted); margin-bottom: 16px; }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; box-shadow: var(--shadow); }
+    .card-title { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-muted); margin-bottom: 16px; font-weight: 600; }
 
     .heatmap-grid { display: grid; grid-template-columns: 36px repeat(24, 1fr); gap: 3px; align-items: center; }
-    .heatmap-day-label { font-size: 0.65rem; color: var(--stats-muted); text-align: right; padding-right: 6px; }
+    .heatmap-day-label { font-size: 0.65rem; color: var(--text-muted); text-align: right; padding-right: 6px; }
     .heatmap-hour-labels { display: grid; grid-template-columns: 36px repeat(24, 1fr); gap: 3px; margin-bottom: 6px; }
-    .heatmap-hour-label { font-size: 0.6rem; color: var(--stats-muted); text-align: center; }
-    .heatmap-cell { aspect-ratio: 1; border-radius: 3px; background: var(--stats-border); }
+    .heatmap-hour-label { font-size: 0.6rem; color: var(--text-muted); text-align: center; }
+    .heatmap-cell { aspect-ratio: 1; border-radius: 3px; background: var(--border); }
 
     .summary-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
-    .summary-table th { text-align: left; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--stats-muted); padding: 8px 12px; border-bottom: 1px solid var(--stats-border); font-weight: 500; }
-    .summary-table td { padding: 10px 12px; border-bottom: 1px solid var(--stats-border); color: var(--stats-text); }
+    .summary-table th { text-align: left; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); padding: 8px 12px; border-bottom: 1px solid var(--border); font-weight: 500; }
+    .summary-table td { padding: 10px 12px; border-bottom: 1px solid var(--border); color: var(--text); }
     .summary-table tr:last-child td { border-bottom: none; }
-    .summary-table tr:hover td { background: rgba(255,255,255,0.02); }
+    .summary-table tr:hover td { background: var(--surface-2); }
     .sound-pill { display: inline-flex; align-items: center; gap: 6px; }
     .sound-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
     .conf-bar-wrap { display: flex; align-items: center; gap: 8px; }
-    .conf-bar { height: 4px; border-radius: 2px; flex: 1; background: var(--stats-border); overflow: hidden; }
+    .conf-bar { height: 4px; border-radius: 2px; flex: 1; background: var(--border); overflow: hidden; }
     .conf-bar-fill { height: 100%; border-radius: 2px; }
   </style>
+  <script>
+    if (localStorage.getItem("audio-detector-theme") === "dark") document.documentElement.classList.add("dark-init");
+  </script>
 </head>
 <body>
+<script>
+  if (localStorage.getItem("audio-detector-theme") === "dark") document.body.classList.add("dark");
+</script>
+
+<div id="statsPage">
 <div class="shell">
 
   <div class="header">
     <h1>Notify</h1>
     <div class="header-actions">
-      <nav class="top-nav">
+      <nav class="top-nav" aria-label="Primary">
         <a class="top-nav-link" href="index.html">Detector</a>
         <a class="top-nav-link active" href="stats.html">Stats</a>
       </nav>
+      <label class="toggle-wrap">
+        Dark
+        <label class="toggle">
+          <input type="checkbox" id="darkSetting">
+          <span class="toggle-slider"></span>
+        </label>
+      </label>
     </div>
   </div>
 
   <div class="user-bar">
-    <span id="userEmail"></span>
-    <button id="signOutBtn">Sign out</button>
+    <span class="user-bar-email" id="userEmail"></span>
+    <button class="btn-sign-out" id="signOutBtn">Sign out</button>
   </div>
 
   <div class="filter-bar">
@@ -163,10 +148,20 @@
   </div>
 
 </div>
+</div>
 
 <!-- Chart.js + date adapter (required for scatter time axis) -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+
+<script>
+  const darkToggle = document.getElementById("darkSetting");
+  darkToggle.checked = localStorage.getItem("audio-detector-theme") === "dark";
+  darkToggle.onchange = () => {
+    document.body.classList.toggle("dark", darkToggle.checked);
+    localStorage.setItem("audio-detector-theme", darkToggle.checked ? "dark" : "light");
+  };
+</script>
 
 <script type="module" src="stats.js"></script>
 </body>
