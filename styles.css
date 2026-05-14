@@ -271,6 +271,142 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 16px;
   .auth-card { padding: 28px 20px 24px; }
 }
 
+/* ── Calibration modal ── */
+#calibModal {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+#calibModal.open { display: flex; }
+
+.calib-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(2px);
+}
+
+.calib-card {
+  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.18);
+  padding: 28px 24px 22px;
+  width: 100%;
+  max-width: 400px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.calib-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.calib-desc {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  line-height: 1.55;
+  margin: 0;
+}
+
+.calib-phase {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--accent);
+  letter-spacing: 0.01em;
+  min-height: 1.2em;
+}
+
+.calib-live-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.calib-live-label {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  min-width: 60px;
+}
+.calib-live-track {
+  flex: 1;
+  height: 6px;
+  background: var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.calib-live-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--accent);
+  border-radius: 3px;
+  transition: width 0.08s linear;
+}
+
+.calib-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.calib-bar-track {
+  flex: 1;
+  height: 8px;
+  background: var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.calib-bar-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--accent);
+  border-radius: 4px;
+  transition: width 0.15s linear;
+}
+.calib-countdown {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  font-family: 'IBM Plex Mono', monospace;
+  min-width: 28px;
+  text-align: right;
+}
+
+.calib-result {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  padding: 4px 0;
+}
+.calib-metric {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 9px 14px;
+  font-size: 0.875rem;
+  border-bottom: 1px solid var(--border);
+}
+.calib-metric:last-child { border-bottom: none; }
+.calib-metric-label { color: var(--text-muted); }
+.calib-metric-value {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--accent);
+}
+
+.calib-actions { display: flex; flex-direction: column; gap: 8px; }
+
 #flashOverlay {
   position: fixed;
   top: 0;

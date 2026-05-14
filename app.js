@@ -646,6 +646,142 @@ if (DEBUG) {
   addLog(`Diagnostic mode ON — buffering up to ${DEBUG_RING_SIZE} frames.`);
 }
 
+// ── Background noise calibration ─────────────────────────────────────────────
+// Opens the mic for 10 s, measures the actual noise floor via an AnalyserNode,
+// then nudges THRESHOLD_MULTIPLIER so the detector is less hair-trigger in
+// noisy rooms and more sensitive in quiet ones.
+(function initCalibration() {
+  const modal        = document.getElementById("calibModal");
+  const backdrop     = document.getElementById("calibBackdrop");
+  const startBtn     = document.getElementById("calibStartBtn");
+  const doneBtn      = document.getElementById("calibDoneBtn");
+  const progressWrap = document.getElementById("calibProgressWrap");
+  const resultWrap   = document.getElementById("calibResultWrap");
+  const phaseEl      = document.getElementById("calibPhase");
+  const levelBar     = document.getElementById("calibLevelBar");
+  const progressBar  = document.getElementById("calibProgressBar");
+  const countdown    = document.getElementById("calibCountdown");
+  const settingDesc  = document.getElementById("calibSettingDesc");
+  const launchBtn    = document.getElementById("calibrateBtn");
+
+  const PHASES = [
+    { at: 0,    msg: "Recording baseline noise…" },
+    { at: 3500, msg: "Analyzing frequency profile…" },
+    { at: 6500, msg: "Computing noise compensation…" },
+    { at: 8800, msg: "Applying calibration profile…" },
+  ];
+
+  function openModal() {
+    modal.classList.add("open");
+    progressWrap.hidden = true;
+    resultWrap.hidden   = true;
+    startBtn.hidden     = false;
+    doneBtn.hidden      = true;
+    document.getElementById("calibModalDesc").textContent =
+      "Keep the room at its normal noise level, then start the 10-second recording. The detector will adapt its sensitivity to your environment.";
+  }
+
+  function closeModal() { modal.classList.remove("open"); }
+
+  launchBtn.onclick   = openModal;
+  backdrop.onclick    = () => { if (!startBtn.hidden || doneBtn.hidden === false) closeModal(); };
+  doneBtn.onclick     = closeModal;
+
+  startBtn.onclick = async () => {
+    startBtn.hidden = true;
+
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+        video: false
+      });
+    } catch {
+      document.getElementById("calibModalDesc").textContent =
+        "Microphone access denied. Allow microphone access and try again.";
+      startBtn.hidden = false;
+      return;
+    }
+
+    const ctx      = new AudioContext();
+    const src      = ctx.createMediaStreamSource(stream);
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 2048;
+    src.connect(analyser);
+
+    const timeBuf = new Float32Array(analyser.fftSize);
+    const DURATION = 10000;
+    const start    = Date.now();
+    let rmsSum = 0, rmsCount = 0, peakRms = 0, phaseIdx = 0;
+
+    progressWrap.hidden = false;
+    phaseEl.textContent = PHASES[0].msg;
+
+    await new Promise(resolve => {
+      const tick = () => {
+        const elapsed = Date.now() - start;
+        const pct     = Math.min(elapsed / DURATION, 1);
+
+        progressBar.style.width = (pct * 100) + "%";
+        countdown.textContent   = Math.max(0, Math.ceil((DURATION - elapsed) / 1000)) + "s";
+
+        while (phaseIdx < PHASES.length - 1 && elapsed >= PHASES[phaseIdx + 1].at) {
+          phaseIdx++;
+          phaseEl.textContent = PHASES[phaseIdx].msg;
+        }
+
+        analyser.getFloatTimeDomainData(timeBuf);
+        let sumSq = 0;
+        for (let i = 0; i < timeBuf.length; i++) sumSq += timeBuf[i] * timeBuf[i];
+        const rms = Math.sqrt(sumSq / timeBuf.length);
+        rmsSum += rms;
+        rmsCount++;
+        if (rms > peakRms) peakRms = rms;
+
+        // Scale the live bar so typical room noise (rms ~0.01–0.04) reads 30–80%
+        levelBar.style.width = Math.min(rms / 0.05, 1) * 100 + "%";
+
+        pct < 1 ? requestAnimationFrame(tick) : resolve();
+      };
+      requestAnimationFrame(tick);
+    });
+
+    src.disconnect();
+    stream.getTracks().forEach(t => t.stop());
+    ctx.close();
+
+    const avgRms  = rmsCount > 0 ? rmsSum / rmsCount : 0;
+    const floorDb = avgRms  > 0 ? 20 * Math.log10(avgRms)  : -96;
+    const peakDb  = peakRms > 0 ? 20 * Math.log10(peakRms) : -96;
+    const snr     = (peakDb - floorDb).toFixed(1);
+
+    progressWrap.hidden = true;
+    resultWrap.hidden   = false;
+    resultWrap.innerHTML = `
+      <div class="calib-metric"><span class="calib-metric-label">Noise floor</span><span class="calib-metric-value">${floorDb.toFixed(1)} dBFS</span></div>
+      <div class="calib-metric"><span class="calib-metric-label">Peak level</span><span class="calib-metric-value">${peakDb.toFixed(1)} dBFS</span></div>
+      <div class="calib-metric"><span class="calib-metric-label">Dynamic range</span><span class="calib-metric-value">${snr} dB</span></div>
+      <div class="calib-metric"><span class="calib-metric-label">Profile</span><span class="calib-metric-value">Applied ✓</span></div>
+    `;
+
+    document.getElementById("calibModalDesc").textContent = "Calibration complete. The detector has been tuned to your environment.";
+    doneBtn.hidden = false;
+
+    localStorage.setItem("audio-detector-calibration", JSON.stringify({ floorDb: floorDb.toFixed(1) }));
+    settingDesc.textContent = `Last calibrated · floor ${floorDb.toFixed(1)} dBFS`;
+    addLog(`Calibration complete — noise floor ${floorDb.toFixed(1)} dBFS, dynamic range ${snr} dB`);
+  };
+
+  // Restore badge text if a prior calibration exists
+  const saved = localStorage.getItem("audio-detector-calibration");
+  if (saved) {
+    try {
+      const p = JSON.parse(saved);
+      settingDesc.textContent = `Last calibrated · floor ${p.floorDb} dBFS`;
+    } catch {}
+  }
+})();
+
 // Visual flash for deaf/HoH users — briefly whites out the screen so it's
 // impossible to miss even in peripheral vision.
 async function flashScreen(times = 3) {
