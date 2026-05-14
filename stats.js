@@ -127,7 +127,6 @@ function renderDashboard(data, days) {
 
 function renderKPIs(data, days) {
   const total   = data.length;
-  const avgConf = (data.reduce((s, d) => s + d.confidence, 0) / total * 100).toFixed(1);
   const hc      = Array(24).fill(0);
   data.forEach(d => hc[new Date(d.ts).getHours()]++);
   const peakH = hc.indexOf(Math.max(...hc));
@@ -137,7 +136,6 @@ function renderKPIs(data, days) {
 
   document.getElementById("kpiStrip").innerHTML = [
     { v: total,             l: `Detections (${days}d)`, c: "#4f9cf9" },
-    { v: avgConf + "%",     l: "Avg confidence",        c: "#4ff9b6" },
     { v: fmtHour(peakH),    l: "Peak hour",             c: "#f9d44f" },
     { v: topLabel,          l: "Top sound",             c: "#f97b4f" },
   ].map(k => `
@@ -261,7 +259,6 @@ function renderTable(data, labels, colorMap) {
   document.getElementById("summaryTableBody").innerHTML = labels.map(lbl => {
     const rows    = data.filter(d => d.label === lbl);
     const count   = rows.length;
-    const avg     = rows.reduce((s,d) => s+d.confidence, 0) / count;
     const lastTs  = Math.max(...rows.map(d => d.ts));
     const hc      = Array(24).fill(0);
     rows.forEach(d => hc[new Date(d.ts).getHours()]++);
@@ -271,10 +268,6 @@ function renderTable(data, labels, colorMap) {
         <span class="sound-dot" style="background:${colorMap[lbl]}"></span>${lbl}
       </div></td>
       <td>${count}</td>
-      <td><div class="conf-bar-wrap">
-        <div class="conf-bar"><div class="conf-bar-fill" style="width:${(avg*100).toFixed(0)}%;background:${colorMap[lbl]}"></div></div>
-        <span>${(avg*100).toFixed(1)}%</span>
-      </div></td>
       <td>${fmtHour(peak)}</td>
       <td>${fmtRelTime(lastTs)}</td>
     </tr>`;
