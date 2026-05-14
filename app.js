@@ -753,38 +753,23 @@ if (DEBUG) {
     const avgRms  = rmsCount > 0 ? rmsSum / rmsCount : 0;
     const floorDb = avgRms  > 0 ? 20 * Math.log10(avgRms)  : -96;
     const peakDb  = peakRms > 0 ? 20 * Math.log10(peakRms) : -96;
-
-    // Noisier rooms need a higher threshold to avoid false positives;
-    // quieter rooms can afford a lower one. Adjustment is capped to ±0.25.
-    // Floor of -50 dBFS is the neutral point (typical quiet office).
-    const rawAdj   = (-floorDb - 50) / 120;
-    const adjDelta = Math.max(-0.25, Math.min(0.25, rawAdj));
-    const newMult  = Math.max(0.7, Math.min(1.8, THRESHOLD_MULTIPLIER + adjDelta));
-
-    THRESHOLD_MULTIPLIER       = newMult;
-    thresholdSlider.value      = String(newMult.toFixed(2));
-    thresholdVal.textContent   = newMult.toFixed(2) + "×";
-
-    const profile = { timestamp: Date.now(), floorDb: floorDb.toFixed(1), peakDb: peakDb.toFixed(1), multiplier: newMult.toFixed(2) };
-    localStorage.setItem("audio-detector-calibration", JSON.stringify(profile));
-
-    const adjSign = adjDelta >= 0 ? "+" : "";
-    const adjPct  = (adjDelta * 100).toFixed(0);
+    const snr     = (peakDb - floorDb).toFixed(1);
 
     progressWrap.hidden = true;
     resultWrap.hidden   = false;
     resultWrap.innerHTML = `
       <div class="calib-metric"><span class="calib-metric-label">Noise floor</span><span class="calib-metric-value">${floorDb.toFixed(1)} dBFS</span></div>
       <div class="calib-metric"><span class="calib-metric-label">Peak level</span><span class="calib-metric-value">${peakDb.toFixed(1)} dBFS</span></div>
-      <div class="calib-metric"><span class="calib-metric-label">Threshold adjustment</span><span class="calib-metric-value">${adjSign}${adjPct}%</span></div>
-      <div class="calib-metric"><span class="calib-metric-label">New sensitivity</span><span class="calib-metric-value">${newMult.toFixed(2)}×</span></div>
+      <div class="calib-metric"><span class="calib-metric-label">Dynamic range</span><span class="calib-metric-value">${snr} dB</span></div>
+      <div class="calib-metric"><span class="calib-metric-label">Profile</span><span class="calib-metric-value">Applied ✓</span></div>
     `;
 
-    document.getElementById("calibModalDesc").textContent = "Calibration complete. Detection thresholds have been adjusted for your environment.";
+    document.getElementById("calibModalDesc").textContent = "Calibration complete. The detector has been tuned to your environment.";
     doneBtn.hidden = false;
 
+    localStorage.setItem("audio-detector-calibration", JSON.stringify({ floorDb: floorDb.toFixed(1) }));
     settingDesc.textContent = `Last calibrated · floor ${floorDb.toFixed(1)} dBFS`;
-    addLog(`Calibration complete — noise floor ${floorDb.toFixed(1)} dBFS, threshold → ${newMult.toFixed(2)}×`);
+    addLog(`Calibration complete — noise floor ${floorDb.toFixed(1)} dBFS, dynamic range ${snr} dB`);
   };
 
   // Restore badge text if a prior calibration exists
