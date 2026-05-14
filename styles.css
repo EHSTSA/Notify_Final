@@ -607,3 +607,72 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 16px;
   .bar-wrap { height: 280px; }
   .scatter-wrap { height: 360px; }
 }
+
+
+
+/* ─────────────────────────────
+   Feedback Popup
+───────────────────────────── */
+
+.feedback-popup{
+  position:fixed;
+  bottom:20px;
+  right:20px;
+  width:260px;
+  background:var(--card,#1e1e1e);
+  color:var(--text,#fff);
+  border-radius:18px;
+  padding:18px;
+  box-shadow:0 10px 30px rgba(0,0,0,.25);
+  z-index:99999;
+  animation:popupIn .25s ease;
+}
+
+.feedback-popup.hidden{
+  display:none;
+}
+
+.feedback-title{
+  font-size:.95rem;
+  font-weight:600;
+  margin-bottom:14px;
+}
+
+.feedback-buttons{
+  display:flex;
+  gap:10px;
+}
+
+.feedback-btn{
+  flex:1;
+  border:none;
+  border-radius:12px;
+  padding:12px;
+  font-size:1.25rem;
+  cursor:pointer;
+  background:rgba(255,255,255,.08);
+  color:inherit;
+  transition:.15s;
+}
+
+.feedback-btn:hover{
+  transform:translateY(-1px);
+  background:rgba(255,255,255,.14);
+}
+
+.feedback-thanks{
+  text-align:center;
+  font-weight:600;
+  padding:8px 0;
+}
+
+@keyframes popupIn{
+  from{
+    opacity:0;
+    transform:translateY(10px);
+  }
+  to{
+    opacity:1;
+    transform:translateY(0);
+  }
+}
